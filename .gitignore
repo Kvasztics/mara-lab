@@ -1,0 +1,33 @@
+# Konfiguráció
+config/config.php
+.env
+
+# Naplók
+*.log
+logs/*.txt
+ollama_raw_debug.txt
+
+# Cache
+cache/
+tmp/
+
+# Session
+sessions/
+
+# Feltöltések
+uploads/
+genimages/
+gensongs/
+
+# IDE
+.vscode/
+.idea/
+
+# Linux
+*~
+
+# Composer
+vendor/
+
+# Node
+node_modules/
