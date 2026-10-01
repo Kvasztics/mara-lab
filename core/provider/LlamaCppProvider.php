@@ -469,9 +469,12 @@ error_log(
             finishReason: $response['choices'][0]['finish_reason'] ?? null,
             usage: $response['usage'] ?? [],
             meta: [
-                'id'      => $response['id'] ?? null,
+                'id' => $response['id'] ?? null,
                 'timings' => $response['timings'] ?? [],
-            ],
+                'eval_duration' => (int) round(
+                    (float)($response['timings']['predicted_ms'] ?? 0) * 1000000
+                ),
+            ],           
             reasoning: $message['reasoning_content'] ?? null,
             toolCalls: $message['tool_calls'] ?? [],
         );
@@ -500,7 +503,7 @@ error_log(
                 'Content-Type: application/json',
                 'Accept: application/json',
             ],
-            CURLOPT_TIMEOUT        => 120,
+            CURLOPT_TIMEOUT        => 600,
         ];
 
         if ($payload !== null) {

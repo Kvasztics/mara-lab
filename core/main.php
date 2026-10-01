@@ -188,7 +188,7 @@ public function view($var = []): void
     );
     $pagedata['models'] = $mdata['models'];
     $pagedata['image']  = $mdata['image'];
-    $pagedata['chats']  = $this->CHAT->chat_titles($_SESSION['model_id']);
+    $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $this->show([
         'header'   => DIR_TPL.'/header.tpl.php',
         'page'     => DIR_TPL.'/chat.tpl.php',
@@ -209,7 +209,7 @@ public function models($var = []): void
     $pagedata['lang']   = App::get('system.language');
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
-    $pagedata['chats']  = $this->CHAT->chat_titles($_SESSION['model_id']);
+    $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     if ($modelId > 0)
       {
         $template = DIR_TPL.'/model.tpl.php';
@@ -247,7 +247,7 @@ public function newmodel($var = []): void
     $pagedata['lang']    = App::get('system.language');
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
-    $pagedata['chats']  = $this->CHAT->chat_titles($_SESSION['model_id']);
+    $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $pagedata['voiceselect'] = $this->VOC->selectVoices(0);
     $pagedata['ragdocuments'] = $this->RAG->getDocuments();
     $pagedata['modelimages'] = $this->gallery();
@@ -315,7 +315,7 @@ public function settings($var = []): void
     $pagedata               = App::get('system');
     $mdata                  = $this->MOD->getSelectModelList();
     $pagedata['models']     = $mdata['models'];
-    $pagedata['chats']      = $this->CHAT->chat_titles($_SESSION['model_id']);
+    $pagedata['chats']      = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $provider               = App::get('system.provider', '');
     $pagedata['slanguages'] = $this->SET->getLanguages(App::get('system.language'));
     $pagedata['sproviders'] = $this->SET->getProviders($provider); 
@@ -482,7 +482,7 @@ public function rag($var = []): void
     $pagedata['lang']   = App::get('system.language');
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
-    $pagedata['chats']  = $this->CHAT->chat_titles($_SESSION['model_id']);
+    $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $pagedata['knowledge'] = $this->RAG->getList();
     $template = DIR_TPL.'/rag.tpl.php';
     $this->show([
@@ -505,7 +505,7 @@ public function ragnew($var = []): void
     $pagedata['lang']   = App::get('system.language');
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
-    $pagedata['chats']  = $this->CHAT->chat_titles($_SESSION['model_id']);
+    $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $pagedata['action'] = DIR_HOST.'/main/ragsave';
 
     $pagedata['id']      = 0;
