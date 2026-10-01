@@ -9,7 +9,10 @@
      MARA LAB - CHAT
      ====================================================================== -->
 
-<div class="chat-layout">
+<div
+    class="chat-layout"
+    data-stt-provider="<?= htmlspecialchars($stt_provider ?? '', ENT_QUOTES, 'UTF-8') ?>"
+    data-stt-language="<?= htmlspecialchars($stt_language ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
 
     <!-- ==================================================================

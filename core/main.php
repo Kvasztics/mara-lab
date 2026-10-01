@@ -20,6 +20,7 @@ use mara\core\Models;
 use mara\core\Rag;
 use mara\core\Chat;
 use mara\core\voice\VoiceManager;
+use mara\core\stt\SttManager;
 
 class main
 {
@@ -123,6 +124,46 @@ public function voice($var = []): void
     exit;
   }
 /**
+ * Transcribe one recorded microphone clip.
+ */
+public function transcribe($var = []): void
+  {
+    User::loggedIn();
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST')
+      {
+        http_response_code(405);
+        echo json_encode([
+            'success' => false,
+            'error'   => 'STT_ERROR_UPLOAD'
+        ]);
+        exit;
+      }
+
+    try
+      {
+        $result = (new SttManager())->transcribe(
+            $_FILES['audio_blob'] ?? []
+        );
+
+        echo json_encode($result);
+      }
+    catch (\Throwable $e)
+      {
+        error_log('STT failed: '.$e->getMessage());
+
+        http_response_code(503);
+        echo json_encode([
+            'success' => false,
+            'error'   => 'STT_ERROR_SERVER'
+        ]);
+      }
+
+    exit;
+  }
+/**
  * Render main page
  * @param array $var
  * @return void
@@ -138,6 +179,13 @@ public function view($var = []): void
       }    
     $mdata              = $this->MOD->getSelectModelList();  
     $pagedata['lang']   = App::get('system.language');    
+    $pagedata['stt_provider'] = strtolower(
+        (string) App::get('system.stt_provider', '')
+    );
+    $pagedata['stt_language'] = (string) App::get(
+        'stt.whisper.language',
+        strtolower((string)$pagedata['lang'])
+    );
     $pagedata['models'] = $mdata['models'];
     $pagedata['image']  = $mdata['image'];
     $pagedata['chats']  = $this->CHAT->chat_titles($_SESSION['model_id']);

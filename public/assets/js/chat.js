@@ -28,6 +28,11 @@ function hideLoader()
 let activeVoiceAudio = null;
 let voicePlaybackToken = 0;
 let voiceEnabled = false;
+let sttRecognition = null;
+let sttRecognitionActive = false;
+let sttRecorder = null;
+let sttStream = null;
+let sttChunks = [];
 
 function updateVoiceToggle(button)
   {
@@ -38,6 +43,291 @@ function updateVoiceToggle(button)
 
     button.classList.toggle('active', voiceEnabled);
     button.setAttribute('aria-pressed', voiceEnabled ? 'true' : 'false');
+  }
+
+function sttMessage(key)
+  {
+    return window.LANG && LANG[key] ? LANG[key] : '';
+  }
+
+function sttSettings()
+  {
+    const chat = document.querySelector('.chat-layout');
+
+    return {
+      provider: (chat?.dataset.sttProvider || '').toLowerCase(),
+      language: chat?.dataset.sttLanguage || 'hu'
+    };
+  }
+
+function browserLanguage(language)
+  {
+    const value = String(language || '').trim();
+
+    if (value === '' || value.toLowerCase() === 'auto')
+      {
+        return navigator.language || 'hu-HU';
+      }
+
+    return value.includes('-')
+      ? value
+      : value + '-' + value.toUpperCase();
+  }
+
+function setMicState(active)
+  {
+    const button = document.getElementById('btn_mic');
+
+    if (!button)
+      {
+        return;
+      }
+
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+
+function appendTranscription(text)
+  {
+    const input = document.getElementById('chat_message');
+    const value = String(text || '').trim();
+
+    if (!input || value === '')
+      {
+        return;
+      }
+
+    input.value += (input.value.trim() === '' ? '' : ' ') + value;
+    input.focus();
+  }
+
+function toggleSpeechInput()
+  {
+    const settings = sttSettings();
+    console.log(settings);
+    if (settings.provider === 'browser')
+      {
+        toggleBrowserRecognition(browserLanguage(settings.language));
+        return;
+      }
+
+    if (settings.provider === 'whisper')
+      {
+        toggleWhisperRecording();
+        return;
+      }
+
+    setStatus(sttMessage('STT_ERROR_PROVIDER'));
+  }
+
+function toggleBrowserRecognition(language)
+  {
+    if (sttRecognitionActive && sttRecognition)
+      {
+        sttRecognitionActive = false;
+        sttRecognition.stop();
+        return;
+      }
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!Recognition)
+      {
+        setStatus(sttMessage('STT_ERROR_BROWSER_UNAVAILABLE'));
+        return;
+      }
+
+    if (!sttRecognition)
+      {
+        sttRecognition = new Recognition();
+        sttRecognition.continuous = true;
+        sttRecognition.interimResults = false;
+        sttRecognition.lang = language;
+
+        sttRecognition.onstart = function()
+          {
+            console.log('[STT] Browser recognition started');
+            sttRecognitionActive = true;
+            setMicState(true);
+            setStatus(sttMessage('STT_BROWSER_LISTENING'));
+          };
+
+        sttRecognition.onresult = function(event)
+          {
+            for (let index = event.resultIndex; index < event.results.length; index++)
+              {
+                if (event.results[index].isFinal)
+                  {
+                    appendTranscription(event.results[index][0].transcript);
+                  }
+              }
+          };
+
+        sttRecognition.onerror = function(event)
+          {
+            console.error('[STT] Browser recognition error:', event.error, event.message);
+            if (event.error !== 'no-speech')
+              {
+                console.error('Browser STT error:', event.error);
+                setStatus(sttMessage('STT_ERROR_BROWSER'));
+              }
+          };
+
+        sttRecognition.onend = function()
+          {
+            console.log('[STT] Browser recognition ended');
+
+            if (sttRecognitionActive)
+              {
+                setTimeout(function()
+                  {
+                    if (!sttRecognitionActive)
+                      {
+                        return;
+                      }
+
+                    try
+                      {
+                        sttRecognition.start();
+                      }
+                    catch (error)
+                      {
+                        sttRecognitionActive = false;
+                        setMicState(false);
+                        console.error('Browser STT restart failed:', error);
+                      }
+                  }, 200);
+
+                return;
+              }
+
+            setMicState(false);
+            setStatus('');
+          };
+      }
+
+    try
+      {
+        sttRecognition.lang = language;
+        sttRecognitionActive = true;
+        sttRecognition.start();
+      }
+    catch (error)
+      {
+        sttRecognitionActive = false;
+        console.error('Browser STT start failed:', error);
+        setMicState(false);
+      }
+  }
+
+async function toggleWhisperRecording()
+  {
+    if (sttRecorder && sttRecorder.state === 'recording')
+      {
+        sttRecorder.stop();
+        return;
+      }
+
+    try
+      {
+        sttStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true
+          }
+        });
+
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : '';
+
+        sttRecorder = mimeType === ''
+          ? new MediaRecorder(sttStream)
+          : new MediaRecorder(sttStream, {mimeType});
+
+        sttChunks = [];
+
+        sttRecorder.addEventListener('dataavailable', function(event)
+          {
+            if (event.data.size > 0)
+              {
+                sttChunks.push(event.data);
+              }
+          });
+
+        sttRecorder.addEventListener('stop', submitWhisperRecording, {once: true});
+        sttRecorder.start();
+        setMicState(true);
+        setStatus(sttMessage('STT_WHISPER_RECORDING'));
+      }
+    catch (error)
+      {
+        console.error('Microphone access failed:', error);
+        setMicState(false);
+        setStatus(sttMessage('STT_ERROR_MICROPHONE'));
+      }
+  }
+
+async function submitWhisperRecording()
+  {
+    const mimeType = sttRecorder?.mimeType || 'audio/webm';
+    const blob = new Blob(sttChunks, {type: mimeType});
+
+    sttChunks = [];
+    setMicState(false);
+
+    if (sttStream)
+      {
+        sttStream.getTracks().forEach(function(track)
+          {
+            track.stop();
+          });
+        sttStream = null;
+      }
+
+    if (blob.size === 0)
+      {
+        setStatus(sttMessage('STT_ERROR_AUDIO'));
+        return;
+      }
+
+    setStatus(sttMessage('STT_WHISPER_STARTING'));
+
+    const processingTimer = window.setTimeout(function()
+      {
+        setStatus(sttMessage('STT_WHISPER_TRANSCRIBING'));
+      }, 350);
+
+    try
+      {
+        const data = new FormData();
+        data.append('audio_blob', blob, 'recording.webm');
+
+        const response = await fetch('/main/transcribe', {
+          method: 'POST',
+          body: data
+        });
+
+        const result = await response.json();
+
+        if (!result.success)
+          {
+            window.clearTimeout(processingTimer);
+            setStatus(sttMessage(result.error || 'STT_ERROR_SERVER'));
+            return;
+          }
+
+        window.clearTimeout(processingTimer);
+        appendTranscription(result.text || '');
+        setStatus('');
+      }
+    catch (error)
+      {
+        window.clearTimeout(processingTimer);
+        console.error('Whisper STT failed:', error);
+        setStatus(sttMessage('STT_ERROR_SERVER'));
+      }
   }
 
 function toggleSpeakerState()
@@ -222,6 +512,18 @@ function playVoiceText(text)
 document.addEventListener('DOMContentLoaded', () =>
   {
     initializeVoiceToggle();
+
+    const micButton = document.getElementById('btn_mic');
+
+    if (micButton)
+      {
+        //micButton.addEventListener('click', toggleSpeechInput);
+micButton.addEventListener('click', () =>
+  {
+    console.log('[STT] Mic button clicked');
+    toggleSpeechInput();
+  });        
+      }
 
     const modelList = document.getElementById('model_list');
 

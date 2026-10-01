@@ -72,7 +72,6 @@
             </a>
             <a
               href="<?php echo DIR_HOST.'/main/settings'; ?>"
-              onclick="settings();"
               class="menu-link">
               <?= $this->icon('settings') ?>
               <span><?php echo LANG['SETTINGS']; ?></span>
