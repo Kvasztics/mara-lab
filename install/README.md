@@ -1,69 +1,67 @@
-# Mara-Lab telepítő – első tesztváltozat
+# Installing Mara Lab
 
-Célrendszer: Debian 13, ARM64 vagy x86_64, systemd. Friss, külön Mara-Lab telepítést készít. A csomagban található forráskódot másolja; nem tölti le automatikusan a GitHub legújabb változatát.
+The installer is an early test version for **Debian 13**, **ARM64 or x86_64**, and **systemd**. It creates a new Mara Lab installation from the source directory containing the script.
 
-## Próbaüzem a Pi-n
+## Quick start
 
-Az archívum kibontása után, a `mara-lab` mappában:
+From the repository root:
 
 ```bash
 sudo bash install/install.sh --dry-run
-```
-
-Ez nem telepít csomagot, nem ír fájlt vagy adatbázist. Kiírja a rendszeradatokat, a csomagállapotokat és a tervezett célokat. Futó MariaDB és root jogosultság esetén ellenőrzi az adatbázisnév ütközését is.
-
-## Telepítés
-
-```bash
 sudo bash install/install.sh
 ```
 
-Megkérdezi az első admin nevét, e-mailjét és jelszavát. Az adatbázis jelszavát véletlenszerűen generálja, és a `config/config.php` fájlba írja. A jelszavakat nem naplózza. Az első felhasználó jelszavát PHP `password_hash()`-sal tárolja.
+`--dry-run` checks the platform, target conflicts, and base package status without changing the system. It does not test provider connectivity.
 
-Alapértékek: `/var/www/mara-lab`, 8081-es port, `maralab` adatbázis és adatbázis-felhasználó. Felülírhatók:
+During installation, choose **Ollama**, **llama.cpp**, or **both**. For each provider, choose an existing installation or a new local installation. If using both, choose the default. Then enter the first administrator's name, email, and password.
 
-```bash
-sudo bash install/install.sh --dir /var/www/mara-lab-test --port 8083 --database maralab_test
-```
+The installer installs web dependencies, imports the database schema, saves the selected provider settings, generates `config/config.php`, configures nginx, and checks the login page.
 
-A célmappa, port, Nginx-konfignév, adatbázis és adatbázis-felhasználó ütközése esetén megáll. Újrafuttatáskor meglévő telepítést nem frissít. A meglévő Nginx site-okat nem írja át. A csomagkezelő a közös rendszerfüggőségeket telepíti/frissíti, a szükséges szolgáltatásokat elindítja és engedélyezi, az Nginxet a végén újratölti.
+| Default | Value |
+| --- | --- |
+| Application directory | `/var/www/mara-lab` |
+| Web port | `8081` |
+| Database and database user | `maralab` |
+| Login page | `http://YOUR_SERVER:8081/auth/login` |
 
-Függőségek: nginx, mariadb-server, php-fpm, php-cli, php-mysql, php-curl, php-mbstring, php-xml, git, ca-certificates, curl. A `--with-audio-tools` az ffmpeg és espeak-ng csomagokat is telepíti; AI-modelleket nem tölt le.
+The database password is generated automatically. Use the administrator email and password entered during setup to log in.
 
-A belépési oldal: `http://PI_IP:8081/auth/login`, illetve működő helyi névfeloldásnál `http://mara-srv-01.local:8081/auth/login`.
+## Provider choices
 
-## Kezdőbeállítások
+- **Existing Ollama:** enter the base URL, for example `http://127.0.0.1:11434`. The server must be reachable and respond to `/api/tags`. A remote Ollama server can also be used.
+- **New Ollama:** runs the official Linux installer and enables `ollama.service`. Existing Ollama installations are not overwritten.
+- **Existing llama.cpp:** enter a local `llama-server` executable, a GGUF model directory, and a URL such as `http://127.0.0.1:8082`. The web user, `www-data`, must be able to execute the binary and read the model directory and files, including access through their parent directories.
+- **New llama.cpp:** builds a CPU `llama-server` with CMake using two build jobs. Sources and build output go under `/opt/mara-llama-WEBPORT`; GGUF files belong under `/var/lib/mara-llama-WEBPORT/models`. Mara starts the server when a model is selected.
 
-Az SQL csak a kilenc tábla struktúráját és a settings alapértékeit tartalmazza. A meglévő beszélgetések, modellek és felhasználók nem kerülnek át. Ollama/llama.cpp és TTS kezdetben nincs engedélyezve. A böngészős STT szerepel a beállításokban; távoli böngészőből a mikrofon használatához megfelelő biztonságos webes kapcsolat kellhet, a HTTP-s próba a webes alap ellenőrzésére szolgál.
+**Backend installation does not download models.** Download an Ollama model separately, or place GGUF files in the configured llama.cpp directory. GPU setup is a separate task.
 
-A külső AI-programok és modellek útvonalai üresek. A helyi llama.cpp alapbeállítás CPU (`gpu_layers=0`), eSpeak hang `hu`. A PID és napló a telepítési mappán belüli, www-data számára írható `var/run` és `var/log` alá kerül. A következő lépés az AI-szolgáltatások telepítése vagy meglévő szerverek beállítása.
+The web port and llama.cpp port must differ: for example, Mara on **8081** and llama.cpp on **8082**.
 
-## Hibakezelés és ellenőrzés
+## Checks and separate test installations
 
-A telepítő hiba esetén megáll és naplót ad: `/var/log/mara-lab-PORT-install-IDŐPONT.log`. Nem végez teljes automatikus visszavonást: csomagok, új mappa és részben létrehozott adatbázis megmaradhatnak. Újrapróbálás előtt ezeket ellenőrizni kell. Nginx konfigurációellenőrzési hibánál az új site linkjét eltávolítja, és nem tölti be.
+On a system with PHP CLI and the existing backend dependencies installed, check provider settings without creating an application or database:
 
-Még Pi-n ellenőrizendő: csomagtelepítés, SQL-import MariaDB-be, első belépés, modell nélküli UI és a meglévő Mara párhuzamos működése. A telepítő a végén automatikusan ellenőrzi a belépési oldal HTTP 200 válaszát.
-
-## Provider választás
-A telepítő legalább egy providert kér: Ollama, llama.cpp vagy mindkettő. Mindkettőnél választható az alapértelmezett, és külön-külön a meglévő/új telepítés.
-
-- Meglévő Ollama: futó helyi vagy távoli szerver alap URL-je (pl. http://127.0.0.1:11434), /api/tags ellenőrzéssel.
-- Új Ollama: https://ollama.com/install.sh hivatalos telepítő, majd ollama.service indítás. Már telepített Ollamát nem ír felül.
-- Meglévő llama.cpp: helyi direct mód; http://127.0.0.1:PORT, llama-server teljes útvonala és GGUF modellmappa. A www-data számára olvasható/futtatható legyen, a szülőmappák is legyenek átjárhatók. Nem módosítjuk automatikusan a meglévő fájlok jogosultságait.
-- Új llama.cpp: CPU fordítás /opt/mara-llama-PORT alatt, két szálon; modellmappa /var/lib/mara-llama-PORT/models. A Mara indítja a szervert a kiválasztott modellel; nincs külön llama systemd service. A build commitja MARA_BUILD_COMMIT fájlba kerül.
-- A szolgáltatás telepítése nem tölt le modellt; Ollamához külön pull, llama.cpp-hez külön GGUF fájl szükséges. GPU gyorsítás telepítése külön feladat.
-
-Csak a provider-adatok ellenőrzése a már telepített Pi-n:
 ```bash
 sudo bash install/install.sh --check-providers
 ```
-Ez interaktív, és nem hoz létre oldalt vagy adatbázist. A --dry-run továbbra is csak az alapcsomagokat és célütközéseket vizsgálja.
 
-Szintaxis ellenőrzés telepítés előtt:
+To create a separate test application:
+
 ```bash
-bash -n install/install.sh
-bash -n install/providers.sh
-php -l install/setup.php
+sudo bash install/install.sh \
+  --dir /var/www/mara-lab-test \
+  --database maralab_test \
+  --port 8083
 ```
 
-A telepítési ágak még teljes Pi-próbát igényelnek. Továbbra is Debian 13 a támogatott rendszer. Az upstream telepítő/forrás a futtatáskor aktuális verziót tölti le. Sikertelen telepítés után a napló alapján ellenőrizd az új könyvtárakat, DB-t és szolgáltatásokat újrafuttatás előtt; teljes automatikus visszavonás nincs.
+This uses a new application directory, database, and web port. System packages and any selected existing model backend are shared with other applications on the machine.
+
+Optional `--with-audio-tools` installs ffmpeg and eSpeak NG. Other speech services and models need separate setup.
+
+## Status and troubleshooting
+
+Fresh application/database installation with an existing llama.cpp backend has been tested on a Raspberry Pi 4. New backend installation on a clean system remains to be validated. Installer prompts are currently in Hungarian; an English version is planned.
+
+The installer refuses conflicting targets and does not upgrade existing installations. Logs are written to `/var/log/mara-lab-WEBPORT-install-TIMESTAMP.log`. Failed installations can leave packages, backend files, an application directory, or a partially created database behind; inspect the log and created resources before retrying. There is no complete automatic rollback.
+
+For manual configuration, see [config/config_example.php](../config/config_example.php). Keep the real `config.php`, which contains database credentials, out of Git.
