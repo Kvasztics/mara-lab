@@ -2,7 +2,7 @@
 
 **A local AI playground for roleplay, persistent character memory, and exploring model behavior.**
 
-Mara Lab is an experimental environment for exploring how AI models respond when given distinct roles, traits, and a configurable **PsychĂŠ**âa character profile with personality, persistent memories, and a recorded reason for each revision. It was created to observe their behavior, reactions, and capabilities in depth, and to explore how these change with different configurations and interactions.
+Mara Lab is an experimental environment for exploring how AI models respond when given distinct roles, traits, and a configurable **Psyché**—a character profile with personality, persistent memories, and a recorded reason for each revision. It was created to observe their behavior, reactions, and capabilities in depth, and to explore how these change with different configurations and interactions.
 
 Roleplay is both a creative use case and a way to explore model behavior. Build characters, place them in different scenarios, and observe how their responses, role consistency, and persistent memories evolve across conversations.
 
@@ -10,13 +10,13 @@ Mara Lab is under active development. It supports exploratory observation and ex
 
 ## What you can explore
 
-- **Roles and personalities:** configure system prompts and PsychĂŠ profiles, with a history of character revisions.
-- **Memory across conversations:** an enabled `update_memory` tool lets the model initiate updates to its current PsychĂŠ memory, preserving information it considers useful for future conversations. Memory can be reviewed in the character settings.
+- **Roles and personalities:** configure system prompts and Psyché profiles, with a history of character revisions.
+- **Memory across conversations:** an enabled `update_memory` tool lets the model initiate updates to its current Psyché memory, preserving information it considers useful for future conversations. Memory can be reviewed in the character settings.
 - **The model's view of the user:** the `rate_user` tool records model-generated assessments of engagement, trust, affinity, curiosity, frustration, and respect. These are outputs to study, not objective measurements of the person.
 - **Image prompts as an observation record:** retain image-generation prompts for later examination of how the model translates conversation into visual instructions.
 - **Generation settings and measurements:** adjust sampling and context settings, and inspect token counts, generation time, and speed.
 
-The model can update its memory through an enabled tool. Its full personality profile remains editable through the interface; autonomous rewriting of the entire PsychĂŠ is not part of the current toolset.
+The model can update its memory through an enabled tool. Its full personality profile remains editable through the interface; autonomous rewriting of the entire Psyché is not part of the current toolset.
 
 ## Features
 
@@ -34,7 +34,7 @@ A Mara model configuration combines a base model with its prompts, character pro
 | `visit_webpage` | Retrieve web-page content for the model. |
 | `generate_image` | Generate images through a configured image backend, retaining the prompts for later inspection. |
 | `rate_user` | Record the model's assessment of the user's interaction. |
-| `update_memory` | Update persistent memory for the current PsychĂŠ. |
+| `update_memory` | Update persistent memory for the current Psyché. |
 
 Tools can be enabled per model. Custom tools can be added by implementing the [tool interface](core/tools/ToolInterface.php) and following the existing registration and execution conventions in [core/tools](core/tools). Tool use depends on the selected model's capabilities and configuration. Web search and image generation require separately configured services.
 
