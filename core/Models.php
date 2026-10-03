@@ -268,6 +268,12 @@ private function normalize(?array $model): ?array
         $model['modelinfo'] = is_array($decoded) ? $decoded : [];
       }
 
+    // The legacy column remains supported; new saves also put think in parameters.
+    $model['parameters']['think'] = filter_var(
+      $model['parameters']['think'] ?? $model['thinking'] ?? false,
+      FILTER_VALIDATE_BOOLEAN
+    );
+
     $ragIds = $model['rag_ids'] ?? null;
     if ($ragIds === null || (is_string($ragIds) && trim($ragIds) === ''))
       {
@@ -329,6 +335,7 @@ public function save(array $input): int|false
      * Parameters
      */
     $parameters = [
+      'think'             => isset($input['param_think']),
       'temperature'       => (float)($input['temperature'] ?? 0.7),
       'frequency_penalty' => (float)($input['frequency_penalty'] ?? 0),
       'repeat_last_n' => isset($input['repeat_last_auto']) ? -1 : (int)($input['repeat_last_n'] ?? 64),
@@ -359,6 +366,22 @@ public function save(array $input): int|false
     $modelinfo = $this->decodeArray(
       $input['modelinfo'] ?? []
     );
+
+    // Runtime discoveries come from the database, never from editor JSON.
+    $sameSource = !$isNew &&
+      (string)$model['provider'] === trim((string)($input['provider'] ?? '')) &&
+      (string)$model['basemodel'] === trim((string)($input['basemodel'] ?? '')) &&
+      (string)($model['mmproj'] ?? '') === trim((string)($input['mmproj'] ?? ''));
+    $storedInfo = $sameSource ? $this->decodeArray($model['modelinfo'] ?? []) : [];
+    if ($sameSource && self::hasCachedCapabilities(array_merge($model, ['modelinfo' => $storedInfo]))) {
+      $modelinfo = $storedInfo;
+    } elseif (trim((string)($input['provider'] ?? '')) === 'llamacpp') {
+      unset($modelinfo['_capability_source'], $modelinfo['capabilities_checked_at']);
+      $modelinfo['capabilities_known'] = false;
+      foreach (['vision', 'video', 'audio', 'tools', 'thinking'] as $key) {
+        $modelinfo[$key] = false;
+      }
+    }
 
     /*
      * RAG document IDs belong to the model, but not to parameters.
@@ -441,6 +464,52 @@ public function save(array $input): int|false
     }
 
   return $modelId;
+  }
+/** True only for capabilities discovered for this exact base model/projector. */
+public static function hasCachedCapabilities(array $model): bool
+  {
+    $info = $model['modelinfo'] ?? [];
+    if (!is_array($info)) {
+      $info = json_decode((string)$info, true) ?: [];
+    }
+    return ($info['capabilities_known'] ?? false) === true &&
+      ($info['_capability_source'] ?? null) === [
+        'provider' => (string)($model['provider'] ?? ''),
+        'basemodel' => (string)($model['basemodel'] ?? ''),
+        'mmproj' => (string)($model['mmproj'] ?? ''),
+      ];
+  }
+
+/** Persist runtime facts without overwriting other model settings. */
+public function rememberCapabilities(array $model, array $capabilities): array
+  {
+    $id = (int)($model['id'] ?? 0);
+    if ($id <= 0 || ($model['provider'] ?? '') !== 'llamacpp' || empty($capabilities)) {
+      return [];
+    }
+    $stored = $this->repository->getById($id);
+    if ($stored === null ||
+        (!User::isAdmin() && (int)$stored['user_id'] !== 0 && (int)$stored['user_id'] !== User::id())) {
+      return [];
+    }
+    foreach (['provider', 'basemodel', 'mmproj'] as $key) {
+      if ((string)($stored[$key] ?? '') !== (string)($model[$key] ?? '')) return [];
+    }
+    $info = $this->decodeArray($stored['modelinfo'] ?? []);
+    foreach (['vision', 'video', 'audio', 'tools', 'thinking'] as $key) {
+      $info[$key] = (bool)($capabilities[$key] ?? false);
+    }
+    foreach (['size', 'quantization'] as $key) {
+      if (!empty($capabilities[$key])) $info[$key] = $capabilities[$key];
+    }
+    $info['capabilities_known'] = true;
+    $info['capabilities_checked_at'] = gmdate('c');
+    $info['_capability_source'] = [
+      'provider' => (string)$stored['provider'],
+      'basemodel' => (string)$stored['basemodel'],
+      'mmproj' => (string)($stored['mmproj'] ?? ''),
+    ];
+    return $this->repository->updateModelInfo($id, $info, $model) ? $info : [];
   }
 /**
  * Decode JSON or array input.

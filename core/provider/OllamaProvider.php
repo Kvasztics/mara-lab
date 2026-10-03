@@ -195,8 +195,16 @@ public function chat(
         );
       }
 
+    foreach ($messages as &$message) {
+        if (!empty($message['images'])) {
+            $message['images'] = array_map(static function ($image) {
+                return preg_replace('~^data:image/[^;]+;base64,~', '', $image);
+            }, $message['images']);
+        }
+    }
+    unset($message);
     $payload = [
-        'model'    => $this->modelId,
+        'model'     => $this->modelId,
         'messages' => $messages,
         'stream'   => false,
     ];

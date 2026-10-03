@@ -64,6 +64,20 @@ document.addEventListener('DOMContentLoaded', () =>
               });
           }
 
+        const unknown = info.capabilities_known === false ||
+            (provider.value === 'llamacpp' && info.capabilities_known === undefined);
+        for (const [id, key] of [['cap-thinking', 'thinking'], ['cap-tools', 'tools']]) {
+            const control = document.getElementById(id);
+            if (control) {
+                control.disabled = !unknown && !info[key];
+                if (control.disabled) control.checked = false;
+            }
+        }
+        if (unknown && capabilities && !capabilities.childNodes.length) {
+            const label = document.createElement('span');
+            label.textContent = 'Capabilities not detected';
+            capabilities.appendChild(label);
+        }
         modelinfo.value = JSON.stringify(info);
       };
 
@@ -78,6 +92,17 @@ document.addEventListener('DOMContentLoaded', () =>
             return;
           }
 
+        // Keep database discoveries instead of replacing them with static GGUF info.
+        let savedInfo;
+        try { savedInfo = JSON.parse(modelinfo.value || '{}'); } catch { savedInfo = {}; }
+        const source = savedInfo._capability_source;
+        const mmproj = document.querySelector('[name="mmproj"]');
+        if (savedInfo.capabilities_known === true && source &&
+            source.provider === selectedProvider && source.basemodel === selectedModel &&
+            source.mmproj === (mmproj?.value || '')) {
+            renderModelInfo(savedInfo);
+            return;
+        }
         try
           {
             const data = new FormData();
@@ -174,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () =>
       });
 
     baseModel.addEventListener('change', loadModelInfo);
+    document.querySelector('[name="mmproj"]')?.addEventListener('change', loadModelInfo);
 
     provider.dataset.previousValue = provider.value;
     loadModels(provider.value, provider.value);

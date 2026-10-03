@@ -266,6 +266,9 @@
                           ?>
 
                             <div class="model-base-capabilities" id="modelinfo-capabilities">
+                          <?php if (empty($baseCapabilities) && (($modelinfo['capabilities_known'] ?? (($provider ?? '') === 'llamacpp' ? false : true)) === false)) { ?>
+                              <span>Capabilities not detected</span>
+                          <?php } ?>
                           <?php if (!empty($baseCapabilities)) { ?>
                               <?php foreach ($baseCapabilities as $capability) { ?>
                                 <span><?php echo $capability; ?></span>
@@ -982,8 +985,9 @@
     if (!is_array($capabilities)) $capabilities = [];
     if (!is_array($builtinTools)) $builtinTools = [];
 
-    $supportsThinking = !empty($modelinfo['thinking']);
-    $supportsTools    = !empty($modelinfo['tools']);
+    $unknownCapabilities = ($modelinfo['capabilities_known'] ?? (($provider ?? '') === 'llamacpp' ? false : true)) === false;
+    $supportsThinking = $unknownCapabilities || !empty($modelinfo['thinking']);
+    $supportsTools    = $unknownCapabilities || !empty($modelinfo['tools']);
 ?>
 
 <section

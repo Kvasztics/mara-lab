@@ -60,6 +60,11 @@ public function send(array $input): array
         ];
       }
 
+    $imagePath = trim((string)($input['image_path'] ?? ''));
+    if ($imagePath !== '' && $this->imageFile($imagePath) === null) {
+        return ['success' => false, 'error' => 'A csatolt kép nem érhető el.'];
+    }
+    $input['image'] = $imagePath !== '' ? $imagePath : null;
     $model = App::get('model');
 
     if ($model === null)
@@ -68,6 +73,9 @@ public function send(array $input): array
           'success' => false
         ];
       }
+    if ($imagePath !== '' && ($model['parameters']['capabilities']['vision'] ?? null) === false) {
+        return ['success' => false, 'error' => 'A kiválasztott modell nem támogat képfeldolgozást. Válassz vision modellt.'];
+    }
       /*
       * First message.
       */
@@ -177,6 +185,13 @@ public function send(array $input): array
             'success' => false
           ];
         }
+      $refreshTitles = true;
+      foreach ($history as $row) {
+          if (($row['role'] ?? '') === 'assistant') {
+              $refreshTitles = false;
+              break;
+          }
+      }
       $messages = $this->buildHistory($history);
 
       /*
@@ -341,6 +356,23 @@ public function send(array $input): array
         /*
         * Provider.
         */
+        foreach ($messages as &$historyMessage) {
+            if (empty($historyMessage['images'])) { continue; }
+            $encoded = [];
+            foreach ($historyMessage['images'] as $path) {
+                $file = $this->imageFile((string)$path);
+                if ($file === null) {
+                    $historyMessage['content'] .= "\n[A korábban csatolt kép nem érhető el.]";
+                    continue;
+                }
+                $bytes = file_get_contents($file['path']);
+                if ($bytes === false) { throw new \RuntimeException('A kép beolvasása sikertelen.'); }
+                $encoded[] = 'data:'.$file['mime'].';base64,'.base64_encode($bytes);
+            }
+            if ($encoded) { $historyMessage['images'] = $encoded; }
+            else { unset($historyMessage['images']); }
+        }
+        unset($historyMessage);
         $providers = new ProviderManager();
 
         if (!$providers->activate($model))
@@ -653,7 +685,8 @@ public function send(array $input): array
       'model_html'   => $modelHtml,
       'voice_text'   => VoiceText::clean($content),
       'rating_html'  => $ratingHtml,
-      'metrics_html' => $metricsHtml
+      'metrics_html' => $metricsHtml,
+      'titles'       => $refreshTitles ? $this->chat_titles($modelId) : null
     ];     
   }  
 /**
@@ -781,6 +814,49 @@ public function chat_titles($modelId)
       }                
     return $html;    
   }
+/** Upload one validated image; database receives only its authenticated URL. */
+public function uploadImage(array $file): array
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        throw new \RuntimeException('A feltöltés sikertelen. Ellenőrizd a PHP feltöltési méretkorlátját.');
+    }
+    $temporary = (string)($file['tmp_name'] ?? '');
+    if (!is_uploaded_file($temporary) || filesize($temporary) > 8 * 1024 * 1024) {
+        throw new \RuntimeException('Legfeljebb 8 MB-os kép tölthető fel.');
+    }
+    $info = @getimagesize($temporary);
+    $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($temporary);
+    $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+    if (!$info || !isset($extensions[$mime]) || ($info['mime'] ?? '') !== $mime
+        || $info[0] * $info[1] > 16000000) {
+        throw new \RuntimeException('JPEG, PNG vagy WebP kép szükséges, legfeljebb 16 megapixel.');
+    }
+    $directory = DIR_ROOT.'/var/uploads';
+    if (!is_dir($directory) || !is_writable($directory)) {
+        throw new \RuntimeException('A var/uploads mappa hiányzik vagy nem írható.');
+    }
+    $name = User::id().'-'.bin2hex(random_bytes(16)).'.'.$extensions[$mime];
+    if (!move_uploaded_file($temporary, $directory.'/'.$name)) {
+        throw new \RuntimeException('A kép mentése sikertelen.');
+    }
+    chmod($directory.'/'.$name, 0640);
+    return ['success' => true, 'path' => '/chat_ajax/image?name='.$name];
+}
+
+/** Resolve only the current user's own generated file names, never arbitrary paths. */
+public function imageFile(string $url): ?array
+{
+    if (!preg_match('~^/chat_ajax/image\?name=([0-9]+-[a-f0-9]{32}\.(?:jpg|png|webp))$~D', $url, $match)) {
+        return null;
+    }
+    if (explode('-', $match[1], 2)[0] !== (string)User::id()) { return null; }
+    $path = DIR_ROOT.'/var/uploads/'.$match[1];
+    if (!is_file($path) || is_link($path) || !is_readable($path)) { return null; }
+    $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) { return null; }
+    return ['path' => $path, 'mime' => $mime];
+}
+
 /**
  * Build provider message history
  *

@@ -24,13 +24,51 @@ public function sendmessage(): void
 
     header('Content-Type: application/json; charset=utf-8');
 
-    $result = $this->CHAT->send($_POST);
+    try {
+        $result = $this->CHAT->send($_POST);
+    } catch (\Throwable $error) {
+        error_log('Mara chat: '.$error->getMessage());
+        http_response_code(500);
+        $result = ['success' => false, 'error' => 'Az üzenet feldolgozása sikertelen. Ellenőrizd a szerver naplóját.'];
+    }
 
     echo json_encode(
         $result,
         JSON_UNESCAPED_UNICODE
     );
   }
+/** Upload image separately so Send never races the upload. */
+public function uploadimage(): void
+{
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        echo json_encode($this->CHAT->uploadImage($_FILES['image'] ?? []), JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $error) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $error->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+}
+
+/** Authenticated image delivery; uploaded files live outside the public directory. */
+public function image(): void
+{
+    User::loggedIn();
+    $file = $this->CHAT->imageFile('/chat_ajax/image?name='.(string)($_GET['name'] ?? ''));
+    if ($file === null) { http_response_code(404); return; }
+    // PHP includes can emit whitespace after closing tags. Never prepend it to binary data.
+    while (ob_get_level() > 0) {
+        if (!ob_end_clean()) { break; }
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) { session_write_close(); }
+    header('Content-Type: '.$file['mime']);
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store');
+    header('Content-Length: '.filesize($file['path']));
+    readfile($file['path']);
+    exit;
+}
+
 /**
  * Set new chat
  *
@@ -159,4 +197,3 @@ public function getUserRating(): void
     ]);
   }  
 }
-?>

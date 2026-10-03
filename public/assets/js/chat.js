@@ -1,3 +1,92 @@
+// Attachments: upload first, store only the server-generated reference.
+let chatAttachment = null;
+let attachmentUploading = false;
+let chatSending = false;
+let attachmentVersion = 0;
+
+function attachmentFeedback(text = '') {
+    const element = document.getElementById('attachment_feedback');
+    if (element) { element.textContent = text; }
+}
+function closeAttachmentMenu() {
+    const menu = document.getElementById('attachment_menu');
+    if (menu) { menu.hidden = true; }
+    document.getElementById('chat_add')?.setAttribute('aria-expanded', 'false');
+}
+function clearAttachment() {
+    attachmentVersion++;
+    chatAttachment = null;
+    const preview = document.getElementById('attachment_preview');
+    if (preview) { preview.hidden = true; }
+    const image = document.getElementById('attachment_thumbnail');
+    if (image) { image.removeAttribute('src'); }
+    const input = document.getElementById('attachment_file');
+    if (input) { input.value = ''; }
+    attachmentFeedback();
+}
+function attachmentBusy() {
+    for (const id of ['chat_add', 'attachment_file', 'attachment_remove', 'chat_send', 'model_list']) {
+        const element = document.getElementById(id);
+        if (element) { element.disabled = attachmentUploading || chatSending; }
+    }
+}
+async function uploadChatImage(file) {
+    if (!file || attachmentUploading || chatSending) { return; }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) {
+        attachmentFeedback('JPEG, PNG vagy WebP kép szükséges, legfeljebb 8 MB.');
+        return;
+    }
+    const version = ++attachmentVersion;
+    attachmentUploading = true;
+    attachmentBusy();
+    attachmentFeedback('Kép feltöltése…');
+    try {
+        const data = new FormData();
+        data.append('image', file);
+        const response = await fetch('/chat_ajax/uploadimage', {method: 'POST', body: data});
+        const result = await response.json();
+        if (!response.ok || !result.success || !result.path) {
+            throw new Error(result.error || 'A feltöltés sikertelen.');
+        }
+        if (version !== attachmentVersion) { return; }
+        chatAttachment = {path: result.path, name: file.name};
+        document.getElementById('attachment_thumbnail').src = result.path;
+        document.getElementById('attachment_name').textContent = file.name;
+        document.getElementById('attachment_preview').hidden = false;
+        attachmentFeedback();
+    } catch (error) {
+        if (version === attachmentVersion) { attachmentFeedback(error.message); }
+    } finally {
+        attachmentUploading = false;
+        attachmentBusy();
+    }
+}
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('chat_add')?.addEventListener('click', () => {
+        const menu = document.getElementById('attachment_menu');
+        if (!menu) { return; }
+        const open = menu.hidden;
+        closeChatMenus();
+        menu.hidden = !open;
+        document.getElementById('chat_add').setAttribute('aria-expanded', String(open));
+        if (open) { document.getElementById('attach_image')?.focus(); }
+    });
+    document.getElementById('attach_image')?.addEventListener('click', () => {
+        closeAttachmentMenu();
+        document.getElementById('attachment_file').click();
+    });
+    document.getElementById('attachment_file')?.addEventListener('change', event => {
+        uploadChatImage(event.target.files[0]);
+    });
+    document.getElementById('attachment_remove')?.addEventListener('click', clearAttachment);
+});
+document.addEventListener('click', event => {
+    if (!event.target.closest('.attachment-actions')) { closeAttachmentMenu(); }
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { closeAttachmentMenu(); }
+});
+
 function showLoader()
   {
     const loader = document.getElementById('_loader');
@@ -541,6 +630,9 @@ micButton.addEventListener('click', () =>
 
 async function changeModel(modelId)
   {
+    if (chatSending || attachmentUploading) { return; }
+    clearAttachment();
+
     const data = new FormData();
     data.append('id', modelId);
 
@@ -579,6 +671,9 @@ async function changeModel(modelId)
 
 async function changeChat(chatId)
   {
+    if (chatSending || attachmentUploading) { return; }
+    clearAttachment();
+
     showLoader();
 
     try
@@ -640,6 +735,9 @@ async function changeChat(chatId)
 
 async function newChat()
   {
+    if (chatSending || attachmentUploading) { return; }
+    clearAttachment();
+
     showLoader();
 
     try
@@ -881,6 +979,8 @@ function setStatus(message = '')
 
 async function sendMessage()
   {
+    if (chatSending || attachmentUploading) { return; }
+
     const input    = document.getElementById('chat_message');
     const messages = document.getElementById('chat_messages');
 
@@ -895,6 +995,10 @@ async function sendMessage()
       {
         return;
       }
+
+    chatSending = true;
+    attachmentBusy();
+    const sentAttachment = chatAttachment;
 
     /*
      * Temporary user message.
@@ -927,6 +1031,7 @@ async function sendMessage()
         const data = new FormData();
 
         data.append('message', message);
+        if (sentAttachment) { data.append('image_path', sentAttachment.path); }
 
         const rateUser = document.getElementById('rate_user');
 
@@ -947,10 +1052,14 @@ async function sendMessage()
 
         if (!result.success)
           {
-            console.error('Send message failed:', result);
-            return;
+            throw new Error(result.error || 'Az üzenetküldés sikertelen.');
           }
 
+        clearAttachment();
+        if (typeof result.titles === 'string') {
+            const chatList = document.getElementById('chat_list');
+            if (chatList) chatList.innerHTML = result.titles;
+        }
         /*
          * Replace temporary user message with
          * the server-rendered message template.
@@ -1010,12 +1119,17 @@ async function sendMessage()
     catch (error)
       {
         console.error('Send message error:', error);
+        attachmentFeedback(error.message);
+        pendingUserRow.classList.add('message-send-error');
+        pendingUserRow.title = 'A feldolgozás nem fejeződött be. Ellenőrizd a beszélgetést újraküldés előtt.';
       }
     finally
       {
         stopChatStatus();
         setStatus('');
         hideLoader();
+        chatSending = false;
+        attachmentBusy();
       }
   }
 

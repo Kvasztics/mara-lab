@@ -269,6 +269,20 @@ public function insert(array $data): int
 
     return (int)$this->DB->insert_id;
   }
+/** Update only metadata, conditional on the model source remaining unchanged. */
+public function updateModelInfo(int $id, array $info, array $source): bool
+  {
+    $json = json_encode($info, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $provider = (string)($source['provider'] ?? '');
+    $baseModel = (string)($source['basemodel'] ?? '');
+    $mmproj = (string)($source['mmproj'] ?? '');
+    $stmt = $this->DB->prepare(
+      "UPDATE {$this->table} SET modelinfo = ?
+       WHERE id = ? AND provider = ? AND basemodel = ? AND COALESCE(mmproj, '') = ?"
+    );
+    $stmt->bind_param('sisss', $json, $id, $provider, $baseModel, $mmproj);
+    return $stmt->execute() && $stmt->affected_rows > 0;
+  }
 /**
  * Delete model
  *

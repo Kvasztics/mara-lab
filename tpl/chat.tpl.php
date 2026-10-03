@@ -85,8 +85,7 @@
             <label class="switch">
                 <input
                     type="checkbox"
-                    id="rate_user"
-                    checked>
+                    id="rate_user">
 
                 <span class="switch-slider"></span>
             </label>
@@ -120,7 +119,7 @@
              -------------------------------------------------------------- -->
 
         <div class="chat-messages" id="chat_messages">
-          <?php echo $messages; ?>
+          <?php echo $messages ?? ''; ?>
         </div>
 
 
@@ -129,6 +128,12 @@
              ================================================================== -->
 
         <div class="chat-composer">
+            <div id="attachment_preview" class="attachment-preview" hidden>
+                <img id="attachment_thumbnail" alt="Csatolt kép">
+                <span id="attachment_name"></span>
+                <button type="button" id="attachment_remove" aria-label="Csatolmány eltávolítása">×</button>
+            </div>
+            <div id="attachment_feedback" class="attachment-feedback" role="status" aria-live="polite"></div>
 
 
             <div class="composer-inner">
@@ -136,9 +141,17 @@
 
                 <!-- Ritkább műveletek -->
 
-                <button type="button" class="composer-action" aria-label="További lehetőségek">
-                    <?= $this->icon('plus') ?>
-                </button>
+                <div class="attachment-actions">
+                    <button type="button" class="composer-action" id="chat_add"
+                        aria-label="Csatolmány hozzáadása" aria-expanded="false" aria-controls="attachment_menu">
+                        <?= $this->icon('plus') ?>
+                    </button>
+                    <div id="attachment_menu" class="attachment-menu" hidden>
+                        <button type="button" id="attach_image">Kép csatolása</button>
+                        <button type="button" disabled title="Fejlesztés alatt">Videó hozzáadása — hamarosan</button>
+                    </div>
+                    <input type="file" id="attachment_file" accept="image/jpeg,image/png,image/webp" hidden>
+                </div>
 
 
                 <!-- Message input -->

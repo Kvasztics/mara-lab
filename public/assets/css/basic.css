@@ -3823,3 +3823,21 @@ img {
     }
 
 }
+
+/* Add menu and pending image attachment. */
+.attachment-actions { position: relative; flex-shrink: 0; }
+.attachment-menu { position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 50;
+    min-width: 230px; padding: 6px; background: #fff; border: 1px solid #ddd;
+    border-radius: 12px; box-shadow: 0 8px 28px #0002; }
+.attachment-menu[hidden], .attachment-preview[hidden] { display: none; }
+.attachment-menu button { display: block; width: 100%; padding: 10px 12px; border: 0;
+    border-radius: 8px; background: transparent; text-align: left; cursor: pointer; font: inherit; }
+.attachment-menu button:hover:not(:disabled) { background: #f0f2f5; }
+.attachment-menu button:disabled { opacity: .5; cursor: default; }
+.attachment-preview { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.attachment-preview img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+.attachment-preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-preview button { border: 0; background: transparent; font-size: 24px; cursor: pointer; }
+.attachment-feedback { font-size: 13px; color: #9a3412; overflow-wrap: anywhere; }
+.attachment-feedback:empty { display: none; }
+.message-send-error { opacity: .65; }

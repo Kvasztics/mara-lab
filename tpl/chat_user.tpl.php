@@ -7,7 +7,7 @@
             <div class="message-image">
 
                 <img
-                    src="<?php echo $image; ?>"
+                    src="<?php echo htmlspecialchars((string)$image, ENT_QUOTES, 'UTF-8'); ?>"
                     alt="Feltöltött kép">
 
             </div>

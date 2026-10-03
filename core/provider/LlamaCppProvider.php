@@ -101,16 +101,24 @@ public function capabilities(?string $modelId = null): array
         return [];
       }
 
+    if ($this->model !== null && \mara\core\Models::hasCachedCapabilities($this->model)) {
+        return $this->model['modelinfo'];
+    }
     try
       {
         $props  = $this->request('GET', '/props');
-        $models = $this->request('GET', '/models');
+        $models = $this->request('GET', '/v1/models');
       }
     catch (\Throwable)
       {
         return [];
       }
 
+    // A failed/incomplete response must remain retryable, not become all false.
+    if (!isset($props['modalities'], $props['chat_template_caps']) ||
+        !is_array($props['modalities']) || !is_array($props['chat_template_caps'])) {
+        return [];
+    }
     $modalities = $props['modalities'] ?? [];
     $caps       = $props['chat_template_caps'] ?? [];
     $meta       = $models['data'][0]['meta'] ?? [];
@@ -134,7 +142,9 @@ public function capabilities(?string $modelId = null): array
         ),
 
         'thinking' => (bool)(
-            $caps['supports_preserve_reasoning'] ?? false
+            ($caps['supports_thinking'] ?? false) ||
+            ($caps['supports_preserve_reasoning'] ?? false) ||
+            str_contains((string)($props['chat_template'] ?? ''), 'enable_thinking')
         ),
     ];
   }
@@ -419,6 +429,16 @@ private function ggufQuantization(int $fileType, string $filename): string
             );
         }
 
+        foreach ($messages as &$message) {
+            if (empty($message['images'])) { continue; }
+            $content = [['type' => 'text', 'text' => (string)$message['content']]];
+            foreach ($message['images'] as $image) {
+                $content[] = ['type' => 'image_url', 'image_url' => ['url' => $image]];
+            }
+            $message['content'] = $content;
+            unset($message['images']);
+        }
+        unset($message);
         $payload = array_merge([
             'model'    => $this->modelId,
             'messages' => $messages,
@@ -429,22 +449,18 @@ private function ggufQuantization(int $fileType, string $filename): string
             $payload['tools'] = $tools;
           }
 
-        /*
-        * Thinking kezelése.
-        *
-        * Csak akkor küldjük az enable_thinking kapcsolót,
-        * ha az aktuális modell/template támogatja.
-        * Az érték a Mara modell konfigurációjából érkezik.
-        */
-        $capabilities = $this->capabilities();
-
-        if (
-            ($capabilities['thinking'] ?? false) &&
-            $this->model !== null
-        ) {
-            $payload['chat_template_kwargs'] = [
-                'enable_thinking' => (bool)($this->model['thinking'] ?? false),
-            ];
+        // Read the saved parameter, preserving an explicit false request value.
+        $thinking = filter_var(
+            $options['think'] ?? $this->model['parameters']['think'] ?? $this->model['thinking'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
+        unset($payload['think']);
+        $payload['chat_template_kwargs'] = array_merge(
+            $payload['chat_template_kwargs'] ?? [],
+            ['enable_thinking' => $thinking]
+        );
+        if (!$thinking) {
+            $payload['reasoning_effort'] = 'none';
         }
 
         $response = $this->request(
@@ -553,6 +569,10 @@ error_log(
 
         $baseModel = (string)($model['basemodel'] ?? '');
         $mmproj    = (string)($model['mmproj'] ?? '');
+        $model['parameters']['think'] = filter_var(
+            $model['parameters']['think'] ?? $model['thinking'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
 
         if ($baseModel === '') {
             $this->modelId = null;
@@ -560,7 +580,7 @@ error_log(
         }
 
         $prepared = match ($this->mode) {
-            'direct' => $this->prepareDirect($baseModel, $mmproj),
+            'direct' => $this->prepareDirect($baseModel, $mmproj, $model['parameters'] ?? []),
             'router' => $this->prepareRouter($baseModel),
             default  => false,
         };
@@ -570,6 +590,18 @@ error_log(
         }
 
         $this->model = $model;
+        if (!\mara\core\Models::hasCachedCapabilities($model)) {
+            try {
+                $capabilities = $this->capabilities();
+                if (!empty($capabilities)) {
+                    $info = (new \mara\core\Models())->rememberCapabilities($model, $capabilities);
+                    if (!empty($info)) $this->model['modelinfo'] = $info;
+                }
+            } catch (\Throwable $error) {
+                // Metadata collection must not prevent an otherwise working chat.
+                error_log('llama capability cache: '.$error->getMessage());
+            }
+        }
 
         return true;
     }
@@ -595,7 +627,8 @@ error_log(
 
 private function prepareDirect(
     string $baseModel,
-    string $mmproj = ''
+    string $mmproj = '',
+    array $parameters = []
 ): bool
 {
       $modelId = pathinfo($baseModel, PATHINFO_FILENAME);
@@ -617,7 +650,7 @@ private function prepareDirect(
       }
 
       // Nem fut llama-server: elindítjuk a kívánt modellel.
-      if (!$this->startDirectServer($baseModel, $mmproj)) {
+      if (!$this->startDirectServer($baseModel, $mmproj, $parameters)) {
           $this->modelId = null;
           return false;
       }
@@ -654,7 +687,8 @@ private function prepareDirect(
 	
 private function startDirectServer(
     string $baseModel,
-    string $mmproj = ''
+    string $mmproj = '',
+    array $parameters = []
 ): bool
 {
     $modelId   = pathinfo($baseModel, PATHINFO_FILENAME);
@@ -696,6 +730,12 @@ private function startDirectServer(
         '--model', $modelFile,
         '--n-gpu-layers', (string) $this->gpuLayers,
         '--parallel', (string) $this->parallel,
+        '--ctx-size', (string)(max(512, (int)($parameters['num_ctx'] ?? 4096)) * max(1, $this->parallel)),
+        '--batch-size', '128',
+        '--ubatch-size', '128',
+        '--chat-template-kwargs', json_encode([
+            'enable_thinking' => filter_var($parameters['think'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ], JSON_THROW_ON_ERROR),
     ];
 
     if ($mmprojFile !== null) {
