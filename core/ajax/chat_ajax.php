@@ -12,6 +12,27 @@ class chat_ajax
     {
       $this->CHAT = new Chat();
     }
+/** Read only the signed-in user's active character state. */
+public function emotionalstate(): void
+{
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    try {
+        $userId = (int)User::id();
+        $modelId = (int)($_SESSION['model_id'] ?? 0);
+        if ($userId <= 0 || $modelId <= 0) {
+            echo json_encode(['success' => true, 'state' => null]);
+            return;
+        }
+        $state = (new \mara\database\mEmotionalState())->get($userId, $modelId);
+        echo json_encode(['success' => true, 'state' => $state]);
+    } catch (\Throwable $error) {
+        error_log('Emotional Ball display: '.$error->getMessage());
+        echo json_encode(['success' => false, 'state' => null]);
+    }
+}
+
 /**
  * Send chat message
  *

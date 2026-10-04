@@ -1,44 +1,28 @@
-# Mara-Lab: persist llama.cpp capabilities
+# Emotional Ball chart — incremental update
 
-Apply after mara-lab-vision-fixes.zip. This package updates four production files based on the latest uploaded Models/mModels files and the previous provider/JS patch. No SQL migration or config change is required.
+Apply after the Emotional Ball tool/state migration already deployed today.
+Only four production files change:
+- core/ajax/chat_ajax.php (based on the latest chat_ajax(1).php upload)
+- tpl/chat.tpl.php (based on today's Emotional Ball version)
+- public/assets/js/chat.js (based on today's Emotional Ball version)
+- public/assets/css/basic.css (based on the latest basic(3).css upload)
 
-Copy core/, database/ and public/ into:
+No new database migration or model dependency is required.
+The display reads the logged-in user's active model state from the database. It never invokes inference. It renders eight independent 0–10 values with 8px colored axis dots and a radar polygon. Hover/focus shows the emotion name and value; native SVG titles provide tooltips. The chart is visible when the tool switch is off, showing the last stored state. The switch still controls only tool execution. A missing state starts at zero; database errors show an unavailable message. Data loads on page entry, model change and successful message completion. A request version guard ignores stale responses from earlier models.
+
+Copy the four production files into the Git checkout first:
 /home/platon/mara-lab-installer/mara-lab-git
 
-The optional tests/ directory contains a standalone regression test with fake database objects; it does not access the real database.
-
-## Pi checks and deployment
+Then deploy to the Pi test installation:
 
 ```bash
-cd /home/platon/mara-lab-installer/mara-lab-git
-php -l core/Models.php
-php -l database/mModels.php
-php -l core/provider/LlamaCppProvider.php
-```
-
-If you copied tests/, also run:
-
-```bash
-php tests/capability_cache.php
-```
-
-After the checks pass:
-
-```bash
-sudo tar -C /var/www/mara-lab-test -czf /home/platon/mara-capabilities-backup-$(date +%Y%m%d-%H%M%S).tar.gz core/Models.php database/mModels.php core/provider/LlamaCppProvider.php public/assets/js/model.js
-for file in core/Models.php database/mModels.php core/provider/LlamaCppProvider.php public/assets/js/model.js; do
-    sudo install -o root -g www-data -m 0644 "$file" "/var/www/mara-lab-test/$file"
+php -l /home/platon/mara-lab-installer/mara-lab-git/core/ajax/chat_ajax.php
+php -l /home/platon/mara-lab-installer/mara-lab-git/tpl/chat.tpl.php
+for file in core/ajax/chat_ajax.php tpl/chat.tpl.php public/assets/js/chat.js public/assets/css/basic.css; do
+    sudo install -o root -g www-data -m 0644 "/home/platon/mara-lab-installer/mara-lab-git/$file" "/var/www/mara-lab-test/$file" || break
 done
 ```
 
-Press Ctrl+F5 in the browser. Select/load Hugi through Mara, then reopen the model editor/list. The first successful prepare discovers capabilities. Later prepares reuse stored capability data; normal server readiness checks still occur.
+Refresh with Ctrl+F5. Check Hugi's saved values, hover/focus the dots, then send a message with Emotional Ball enabled. Verify chart updates after the reply; disabling the switch retains the stored diagram. Switch characters and check the diagram switches too.
 
-In phpMyAdmin, inspect the row's modelinfo JSON: capabilities_known should be true, with vision/tools/thinking values and _capability_source. No manual SQL edit is needed. Save the model editor and check these facts remain saved.
-
-Changing provider, base model or mmproj invalidates the cache. When changing a projector, restart the existing server before loading to ensure the new projector is actually loaded (the existing direct launcher reuses a server with the same base model).
-
-Thinking is now saved in parameters.think as well as the existing thinking column. Legacy models normalize the column into the parameter, preserving explicit saved choices. To disable an existing model, turn off Thinking and save.
-
-Runtime facts describe what the server/template reports, not a benchmark of tool reliability. Incomplete or failed retrieval remains unknown and can be retried. Cache write failure does not block chat and is logged. Static trained context metadata is preserved rather than replaced by the server's shorter runtime context.
-
-Local verification: PHP syntax parser and Node syntax check passed. JS behavior test confirms that matching cache skips retrieval and base/projector changes fetch fresh info. The PHP regression test and real server/database integration still need to run on the Pi.
+Validation performed locally: PHP lint of both changed PHP files; Node syntax check; executable DOM checks of all eight axes, hover/focus labels, out-of-order response handling and invalid-state clearing. Live Pi database/browser verification remains to be done.

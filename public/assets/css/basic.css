@@ -3841,3 +3841,12 @@ img {
 .attachment-feedback { font-size: 13px; color: #9a3412; overflow-wrap: anywhere; }
 .attachment-feedback:empty { display: none; }
 .message-send-error { opacity: .65; }
+
+/* Emotional Ball: scoped, no chart library or extra inference. */
+.emotional-chart { width: 100%; max-width: 200px; margin: 8px auto 0; }
+.emotional-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.emotion-grid { fill: none; stroke: currentColor; stroke-opacity: .16; stroke-width: .7; }
+.emotion-area { fill: #638ce5; fill-opacity: .22; stroke: #638ce5; stroke-width: 1.5; }
+.emotion-label-dot { cursor: help; }
+.emotion-label-dot:focus { outline: none; stroke: currentColor; stroke-width: 2; }
+.emotional-chart-status { min-height: 18px; text-align: center; font-size: 11px; opacity: .8; }

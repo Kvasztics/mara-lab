@@ -237,6 +237,35 @@ public function send(array $input): array
       * Runtime context enrichment:
       * mandatory rate_user instruction.
       */
+      // Three gates: selected tool, model tools enabled, and front-panel switch.
+      $emotionalBallEnabled = filter_var($input['emotional_ball'] ?? false, FILTER_VALIDATE_BOOLEAN) &&
+          !empty($model['parameters']['capabilities']['tools']) &&
+          in_array('update_emotional_state', $model['parameters']['builtin_tools'] ?? [], true);
+      if ($emotionalBallEnabled) {
+          $emotionPrompt = trim((string)App::get('system.emotional_ball', ''));
+          if ($emotionPrompt === '') {
+              $emotionalBallEnabled = false;
+              EmotionalState::log(['status' => 'DISABLED', 'model_id' => $modelId, 'chat_id' => $chatId,
+                  'error' => 'Missing system.emotional_ball instruction.']);
+          } else {
+              try {
+                  $state = (new \mara\database\mEmotionalState())->get(User::id(), $modelId);
+                  foreach ($messages as &$historyMessage) {
+                      if (($historyMessage['role'] ?? '') === 'system') {
+                          $historyMessage['content'] .= "\n\n".$emotionPrompt."\n\n".EmotionalState::prompt($state);
+                          break;
+                      }
+                  }
+                  unset($historyMessage);
+                  EmotionalState::log(['status' => 'REQUEST', 'user_id' => User::id(), 'model_id' => $modelId,
+                      'chat_id' => $chatId, 'state' => $state]);
+              } catch (\Throwable $error) {
+                  $emotionalBallEnabled = false;
+                  EmotionalState::log(['status' => 'ERROR', 'model_id' => $modelId, 'chat_id' => $chatId,
+                      'error' => $error->getMessage()]);
+              }
+          }
+      }
       if (!empty($input['rate_user']))
         {
           $rateUserPrompt = trim(
@@ -404,6 +433,13 @@ public function send(array $input): array
             );            
           }        
 
+        $tools = array_values(array_filter($tools, static fn(array $definition): bool =>
+            $emotionalBallEnabled || ($definition['function']['name'] ?? '') !== 'update_emotional_state'
+        ));
+        $allowedToolNames = array_map(static fn(array $definition): string =>
+            (string)($definition['function']['name'] ?? ''), $tools);
+        $emotionUpdated = false;
+
         /*
         * Tool loop.
         */
@@ -478,14 +514,30 @@ public function send(array $input): array
                         : [];
                   }
 
-                $toolResult = $this->TOOLS->run(
-                    $name,
-                    $args,
-                    [
-                      'chat_id'  => $chatId,
-                      'model_id' => $modelId
-                    ]
-                );
+                if (!in_array($name, $allowedToolNames, true) ||
+                    ($name === 'update_emotional_state' && $emotionUpdated)) {
+                    $toolResult = ['success' => false, 'tool' => $name, 'result' => null,
+                        'error' => $emotionUpdated && $name === 'update_emotional_state'
+                            ? 'Emotional state already updated for this response. Continue your normal reply.'
+                            : 'This tool is not enabled for this response.'];
+                } else {
+                    $toolResult = $this->TOOLS->run(
+                        $name,
+                        is_array($args) ? $args : [],
+                        [
+                          'chat_id'  => $chatId,
+                          'model_id' => $modelId,
+                          'emotional_ball_enabled' => $emotionalBallEnabled
+                        ]
+                    );
+                }
+                if ($name === 'update_emotional_state' && !empty($toolResult['success'])) {
+                    $emotionUpdated = true;
+                }
+                if ($name === 'update_emotional_state' && empty($toolResult['success'])) {
+                    EmotionalState::log(['status' => 'REJECTED', 'model_id' => $modelId, 'chat_id' => $chatId,
+                        'error' => $toolResult['error'] ?? 'Tool failed.']);
+                }
 
                 /*
                 * Keep rate_user result for persistence/UI.
@@ -581,6 +633,10 @@ public function send(array $input): array
               }
             }                      
 
+        if ($emotionalBallEnabled && !$emotionUpdated) {
+            EmotionalState::log(['status' => 'NOT_UPDATED', 'model_id' => $modelId, 'chat_id' => $chatId,
+                'error' => 'The model did not successfully call update_emotional_state. Previous state retained.']);
+        }
         /*
         * Save assistant response.
         */

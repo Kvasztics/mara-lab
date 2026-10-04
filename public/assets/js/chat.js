@@ -1,3 +1,66 @@
+// Emotional Ball uses the existing state; rendering never invokes the model.
+const emotionalAxes = [
+    ['joy', 'Öröm', '#e9b900'], ['trust', 'Bizalom', '#63ad46'],
+    ['fear', 'Félelem', '#26866b'], ['surprise', 'Meglepetés', '#25a9cb'],
+    ['sadness', 'Szomorúság', '#4775cc'], ['disgust', 'Undor', '#9a5aba'],
+    ['anger', 'Harag', '#dc5252'], ['anticipation', 'Várakozás', '#e58b35']
+];
+let emotionalReadVersion = 0;
+function renderEmotionalChart(state) {
+    const svg = document.getElementById('emotional_radar');
+    const status = document.getElementById('emotional_chart_status');
+    if (!svg || !status) return;
+    svg.replaceChildren();
+    if (!state || !emotionalAxes.every(([key]) => Number.isInteger(state[key]) && state[key] >= 0 && state[key] <= 10)) {
+        status.textContent = 'Az érzelmi állapot nem érhető el.';
+        return;
+    }
+    status.textContent = '0–10';
+    const point = (index, radius) => {
+        const angle = -Math.PI / 2 + index * Math.PI / 4;
+        return [100 + Math.cos(angle) * radius, 100 + Math.sin(angle) * radius];
+    };
+    const element = (tag, attributes, parent = svg) => {
+        const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+        parent.appendChild(node);
+        return node;
+    };
+    for (const radius of [14, 28, 42, 56, 70]) {
+        element('polygon', {points: emotionalAxes.map((_, i) => point(i, radius).join(',')).join(' '), class: 'emotion-grid'});
+    }
+    emotionalAxes.forEach((_, i) => {
+        const [x, y] = point(i, 70);
+        element('line', {x1: 100, y1: 100, x2: x, y2: y, class: 'emotion-grid'});
+    });
+    element('polygon', {points: emotionalAxes.map(([key], i) => point(i, state[key] * 7).join(',')).join(' '), class: 'emotion-area'});
+    emotionalAxes.forEach(([key, label, color], i) => {
+        const description = `${label} ${state[key]}`;
+        const [x, y] = point(i, 87);
+        const dot = element('circle', {cx: x, cy: y, r: 4, fill: color, tabindex: 0, 'aria-label': description, class: 'emotion-label-dot'});
+        element('title', {}, dot).textContent = description;
+        const [vx, vy] = point(i, state[key] * 7);
+        element('circle', {cx: vx, cy: vy, r: 2, fill: color});
+        dot.addEventListener('mouseenter', () => { status.textContent = description; });
+        dot.addEventListener('focus', () => { status.textContent = description; });
+        dot.addEventListener('mouseleave', () => { status.textContent = '0–10'; });
+        dot.addEventListener('blur', () => { status.textContent = '0–10'; });
+    });
+    svg.setAttribute('aria-label', emotionalAxes.map(([key, label]) => `${label} ${state[key]}`).join(', '));
+}
+async function refreshEmotionalChart() {
+    if (!document.getElementById('emotional_radar')) return;
+    const version = ++emotionalReadVersion;
+    renderEmotionalChart(null);
+    try {
+        const response = await fetch('/chat_ajax/emotionalstate', {cache: 'no-store'});
+        const result = await response.json();
+        if (version === emotionalReadVersion) renderEmotionalChart(response.ok && result.success ? result.state : null);
+    } catch (_) {
+        if (version === emotionalReadVersion) renderEmotionalChart(null);
+    }
+}
+
 // Attachments: upload first, store only the server-generated reference.
 let chatAttachment = null;
 let attachmentUploading = false;
@@ -656,6 +719,7 @@ async function changeModel(modelId)
         document.getElementById('model_list').innerHTML    = result.models;
         document.getElementById('chat_list').innerHTML     = result.titles;
         document.getElementById('modelimage').src          = result.image;
+        refreshEmotionalChart();
         document.getElementById('chat_messages').innerHTML = '';
         document.getElementById('chat_message').value       = '';
       }
@@ -1033,6 +1097,9 @@ async function sendMessage()
         data.append('message', message);
         if (sentAttachment) { data.append('image_path', sentAttachment.path); }
 
+        const emotionalBall = document.getElementById('emotional_ball');
+        data.append('emotional_ball', emotionalBall?.checked ? '1' : '0');
+
         const rateUser = document.getElementById('rate_user');
 
         data.append(
@@ -1055,6 +1122,7 @@ async function sendMessage()
             throw new Error(result.error || 'Az üzenetküldés sikertelen.');
           }
 
+        refreshEmotionalChart();
         clearAttachment();
         if (typeof result.titles === 'string') {
             const chatList = document.getElementById('chat_list');
@@ -1254,6 +1322,7 @@ if (sendButton)
 
 document.addEventListener('DOMContentLoaded', function()
   {
+    refreshEmotionalChart();
     const chatInput = document.getElementById('chat_message');
 
     if (!chatInput)

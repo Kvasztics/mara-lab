@@ -1099,6 +1099,7 @@
                     <option value="update_memory">update_memory</option>
                     <option value="get_last_response_feedback">get_last_response_feedback</option>
                     <option value="rate_user">rate_user</option>
+                    <option value="update_emotional_state">update_emotional_state</option>
                 </select>
 
                 <button type="button" class="btn btn-dark" id="tool-add">
