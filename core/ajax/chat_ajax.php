@@ -12,6 +12,38 @@ class chat_ajax
     {
       $this->CHAT = new Chat();
     }
+/** Export only an owned conversation as a downloadable ShareGPT JSON dataset. */
+public function exportchat(): void
+{
+    User::loggedIn();
+    header('Cache-Control: private, no-store');
+    try {
+        $chatId = (int)($_GET['id'] ?? 0);
+        $dataset = $this->CHAT->exportShareGpt($chatId);
+        if ($dataset === null) {
+            http_response_code(404);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'error' => 'A beszélgetés nem található vagy nem a tiéd.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $json = json_encode($dataset, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        // Clear incidental whitespace from included PHP files before downloading.
+        while (ob_get_level() > 0) {
+            if (!ob_end_clean()) break;
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="mara-chat-'.$chatId.'-sharegpt.json"');
+        echo $json;
+        exit;
+    } catch (\Throwable $error) {
+        error_log('Mara conversation export: '.$error->getMessage());
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'error' => 'A beszélgetés exportálása sikertelen.'], JSON_UNESCAPED_UNICODE);
+    }
+}
+
 /** Read only the signed-in user's active character state. */
 public function emotionalstate(): void
 {

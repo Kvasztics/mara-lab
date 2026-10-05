@@ -48,8 +48,20 @@ function renderEmotionalChart(state) {
     });
     svg.setAttribute('aria-label', emotionalAxes.map(([key, label]) => `${label} ${state[key]}`).join(', '));
 }
+function updateEmotionalVisibility() {
+    const chart = document.getElementById('emotional_chart');
+    const enabled = !!document.getElementById('emotional_ball')?.checked;
+    if (chart) {
+        chart.hidden = !enabled;
+        // Inline display also handles themes overriding the hidden attribute.
+        chart.style.display = enabled ? '' : 'none';
+    }
+    if (enabled) refreshEmotionalChart();
+    else emotionalReadVersion++;
+}
+
 async function refreshEmotionalChart() {
-    if (!document.getElementById('emotional_radar')) return;
+    if (!document.getElementById('emotional_radar') || !document.getElementById('emotional_ball')?.checked) return;
     const version = ++emotionalReadVersion;
     renderEmotionalChart(null);
     try {
@@ -699,6 +711,7 @@ async function changeModel(modelId)
     const data = new FormData();
     data.append('id', modelId);
 
+    setStatus('');
     showLoader();
 
     try
@@ -711,9 +724,9 @@ async function changeModel(modelId)
 
         const result = await response.json();
 
-        if (!result.success)
+        if (!response.ok || !result.success)
           {
-            return;
+            throw new Error(result.error || 'A modellváltás sikertelen.');
           }
 
         document.getElementById('model_list').innerHTML    = result.models;
@@ -726,6 +739,7 @@ async function changeModel(modelId)
     catch (error)
       {
         console.error('Model change failed:', error);
+        setStatus(error.message || 'A modellváltás sikertelen.');
       }
     finally
       {
@@ -847,6 +861,36 @@ async function newChat()
         hideLoader();
       }
   }
+
+async function exportChat(chatId, button) {
+    if (!Number.isInteger(chatId) || chatId <= 0) return;
+    button.disabled = true;
+    try {
+        const response = await fetch(`/chat_ajax/exportchat?id=${chatId}`, {cache: 'no-store'});
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.error || 'Az exportálás sikertelen.');
+        }
+        const blob = await response.blob();
+        // Reject sign-in HTML instead of saving it as a misleading JSON file.
+        const parsed = JSON.parse(await blob.text());
+        if (!Array.isArray(parsed) || !Array.isArray(parsed[0]?.conversations)) {
+            throw new Error('Nem érkezett érvényes ShareGPT export.');
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `mara-chat-${chatId}-sharegpt.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+        setStatus(error.message || 'Az exportálás sikertelen.');
+    } finally {
+        button.disabled = false;
+    }
+}
 
 function closeChatMenus(except = null)
   {
@@ -1322,7 +1366,8 @@ if (sendButton)
 
 document.addEventListener('DOMContentLoaded', function()
   {
-    refreshEmotionalChart();
+    document.getElementById('emotional_ball')?.addEventListener('change', updateEmotionalVisibility);
+    updateEmotionalVisibility();
     const chatInput = document.getElementById('chat_message');
 
     if (!chatInput)
@@ -1363,6 +1408,13 @@ document.addEventListener('click', function(event)
 
         if (menu)
           {
+            if (!menu.querySelector('[data-chat-export]')) {
+                const exportButton = document.createElement('button');
+                exportButton.type = 'button';
+                exportButton.dataset.chatExport = '';
+                exportButton.textContent = 'Exportálás (ShareGPT JSON)';
+                menu.appendChild(exportButton);
+            }
             const open = menu.hidden;
             closeChatMenus(menu);
             menu.hidden = !open;
@@ -1370,6 +1422,17 @@ document.addEventListener('click', function(event)
 
         return;
       }
+
+    const exportButton = event.target.closest('[data-chat-export]');
+    if (exportButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const item = exportButton.closest('.chat-item');
+        const chatId = Number(item?.querySelector('.chat-rename-input')?.dataset.chatId || 0);
+        closeChatMenus();
+        exportChat(chatId, exportButton);
+        return;
+    }
 
     const renameButton = event.target.closest('[data-chat-rename]');
 

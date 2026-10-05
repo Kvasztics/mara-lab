@@ -811,6 +811,13 @@ public function change(int $chatId): string
  * @param string $name
  * @return bool
  */
+public function exportShareGpt(int $chatId): ?array
+{
+    // getChat scopes its query to the signed-in user, including for admins.
+    if ($chatId <= 0 || $this->db->getChat($chatId) === null) return null;
+    return [ShareGptExport::conversation($chatId, $this->db->getMessages($chatId))];
+}
+
 public function rename(int $chatId, string $name): bool
   {
     return $this->db->renameChat(

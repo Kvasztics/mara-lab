@@ -1,28 +1,26 @@
-# Emotional Ball chart — incremental update
+# Emotional Ball visibility and ShareGPT export — 2026-10-05
 
-Apply after the Emotional Ball tool/state migration already deployed today.
-Only four production files change:
-- core/ajax/chat_ajax.php (based on the latest chat_ajax(1).php upload)
-- tpl/chat.tpl.php (based on today's Emotional Ball version)
-- public/assets/js/chat.js (based on today's Emotional Ball version)
-- public/assets/css/basic.css (based on the latest basic(3).css upload)
+Copy core/, tpl/ and public/ into /var/www/html/maralab, merging and overwriting files.
+Five production files:
+- core/Chat.php (latest Chat(3).php)
+- core/ajax/chat_ajax.php (latest chat_ajax(2).php)
+- core/ShareGptExport.php (new)
+- tpl/chat.tpl.php (last delivered radar template)
+- public/assets/js/chat.js (last delivered model-switch diagnostics retained)
 
-No new database migration or model dependency is required.
-The display reads the logged-in user's active model state from the database. It never invokes inference. It renders eight independent 0–10 values with 8px colored axis dots and a radar polygon. Hover/focus shows the emotion name and value; native SVG titles provide tooltips. The chart is visible when the tool switch is off, showing the last stored state. The switch still controls only tool execution. A missing state starts at zero; database errors show an unavailable message. Data loads on page entry, model change and successful message completion. A request version guard ignores stale responses from earlier models.
+No SQL migration is required; mChat.php remains unchanged.
 
-Copy the four production files into the Git checkout first:
-/home/platon/mara-lab-installer/mara-lab-git
+Emotional Ball: chart starts hidden with the unchecked switch. Enabling shows and reads the stored state. Disabling hides the whole panel and invalidates pending reads. Model changes and completed replies refresh it when enabled. Hiding never changes DB state.
 
-Then deploy to the Pi test installation:
+Conversation menu: Exportálás (ShareGPT JSON) is inserted when a three-dot menu opens, including after sidebar refresh. The selected conversation downloads as mara-chat-ID-sharegpt.json. Export only permits conversations owned by the signed-in user, even for admins; the chat need not be active. It does not change the active model/chat.
 
-```bash
-php -l /home/platon/mara-lab-installer/mara-lab-git/core/ajax/chat_ajax.php
-php -l /home/platon/mara-lab-installer/mara-lab-git/tpl/chat.tpl.php
-for file in core/ajax/chat_ajax.php tpl/chat.tpl.php public/assets/js/chat.js public/assets/css/basic.css; do
-    sudo install -o root -g www-data -m 0644 "/home/platon/mara-lab-installer/mara-lab-git/$file" "/var/www/mara-lab-test/$file" || break
-done
-```
+Dataset shape: array containing one object with id and conversations. Turns use from=system/human/gpt and value=text. Full persisted messages are read by ascending ID; empty and unsupported/tool roles are skipped. Stored system text is retained. Runtime-only instructions, tool calls/results, ratings, metrics and image data/links in attachment fields are excluded. Visible message content is preserved exactly, including Unicode/newlines. This is a text-only starting point for curation; it does not recreate historical runtime psyche/memory/tool prompts and does not ensure a completed alternating training conversation. Review the downloaded dataset before training.
 
-Refresh with Ctrl+F5. Check Hugi's saved values, hover/focus the dots, then send a message with Emotional Ball enabled. Verify chart updates after the reply; disabling the switch retains the stored diagram. Switch characters and check the diagram switches too.
+Validation: PHP lint, Node syntax, isolated export ownership/format checks. Actual browser download/toggle verification remains on the workstation.
 
-Validation performed locally: PHP lint of both changed PHP files; Node syntax check; executable DOM checks of all eight axes, hover/focus labels, out-of-order response handling and invalid-state clearing. Live Pi database/browser verification remains to be done.
+Check after copying:
+1. Ctrl+F5; Emotional Ball off: no diagram. On: stored diagram returns. Off: entire diagram panel disappears.
+2. Three dots on any chat → Exportálás (ShareGPT JSON). Open the downloaded JSON.
+3. Check system/human/gpt roles, accents/newlines and chronological content.
+
+Previously deployed note truncation and model-switch diagnostics are retained in their respective files; this package does not replace EmotionalState.php or ProviderManager.php.

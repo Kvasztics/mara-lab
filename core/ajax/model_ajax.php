@@ -41,61 +41,41 @@ class model_ajax
   {
     User::loggedIn();
     header('Content-Type: application/json; charset=utf-8');
-    $modelId = (int)($_POST['id'] ?? 0);
-    if ($modelId <= 0)
-      {
+    try {
+        $modelId = (int)($_POST['id'] ?? 0);
+        if ($modelId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'Érvénytelen modellazonosító.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $model = $this->MOD->getById($modelId);
+        if ($model === null) {
+            echo json_encode(['success' => false, 'error' => 'A kiválasztott modell nem található.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        if (!User::isAdmin() && (int)$model['user_id'] !== 0 && (int)$model['user_id'] !== (int)User::id()) {
+            echo json_encode(['success' => false, 'error' => 'Nincs jogosultságod ehhez a modellhez.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $providers = new ProviderManager();
+        if (!$providers->activate($model)) {
+            echo json_encode(['success' => false, 'error' => $providers->getActivationError() ?: 'A provider aktiválása sikertelen.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        // Update session state only after successful provider activation.
+        $this->MOD->setActiveModel($modelId);
+        App::set('model', $model);
+        $_SESSION['chat_id'] = 0;
+        $titles = $this->CHAT->chat_titles($modelId);
+        $mdata = $this->MOD->getSelectModelList();
         echo json_encode([
-          'success' => false
-        ]);
-        return;
-      }
-    $model = $this->MOD->getById($modelId);
-    if ($model === null)
-      {
-        echo json_encode([
-          'success' => false
-        ]);
-        return;
-      }
-    /*
-     * User may use public models or own models.
-     * Admin may use any model.
-     */
-    if (
-        !User::isAdmin() &&
-        (int)$model['user_id'] !== 0 &&
-        (int)$model['user_id'] !== User::id()
-    )
-      {
-        echo json_encode([
-          'success' => false
-        ]);
-        return;
-      }
-    $providers = new ProviderManager();
-    if (!$providers->activate($model))
-      {
-        echo json_encode([
-          'success' => false
-        ]);
-
-        return;
-      }
-    /*
-     * Change application state only after successful activation.
-     */
-    $this->MOD->setActiveModel($modelId);
-    App::set('model',$model);
-    $_SESSION['chat_id'] = 0;
-    $titles = $this->CHAT->chat_titles($modelId);
-    $mdata  = $this->MOD->getSelectModelList();
-    echo json_encode([
-      'success'  => true,
-      'model_id' => $modelId,
-      'titles'   => $titles,          // chat_list
-      'models'   => $mdata['models'], // model_list
-      'image'    => $mdata['image']   // modelimage
-    ]);
+            'success' => true, 'model_id' => $modelId,
+            'titles' => $titles, 'models' => $mdata['models'], 'image' => $mdata['image']
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $error) {
+        error_log('Mara model change: '.$error->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Szerverhiba történt a modellváltáskor. Ellenőrizd a PHP szervernaplót.'], JSON_UNESCAPED_UNICODE);
+    }
   }
 
 /**

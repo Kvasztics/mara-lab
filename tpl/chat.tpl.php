@@ -79,7 +79,7 @@
                 <span class="switch-slider"></span>
             </label>
         </div>
-        <div id="emotional_chart" class="emotional-chart" aria-live="polite">
+        <div id="emotional_chart" class="emotional-chart" aria-live="polite" hidden>
             <svg id="emotional_radar" viewBox="0 0 200 200" role="img" aria-label="Emotional Ball: nyolc érzelem, 0–10"></svg>
             <div id="emotional_chart_status" class="emotional-chart-status">Betöltés…</div>
         </div>

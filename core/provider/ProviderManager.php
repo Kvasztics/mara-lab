@@ -9,6 +9,19 @@ use mara\core\App;
 final class ProviderManager
 {
   private array $providers = [];
+  private string $activationError = '';
+
+  public function getActivationError(): string
+  {
+      return $this->activationError;
+  }
+
+  private function activationFailed(string $message): bool
+  {
+      $this->activationError = $message;
+      error_log('Mara model activation: '.$message);
+      return false;
+  }
 
   public function getProvider(string $provider): ProviderInterface
   {
@@ -24,40 +37,39 @@ final class ProviderManager
 
   public function activate(array $model): bool
   {
-      $providerName = $model['provider'] ?? '';
-      $baseModel    = $model['basemodel'] ?? '';
-
-      if ($providerName === '' || $baseModel === '') {
-          return false;
-      }
-
-      $enabledProviders = $this->getEnabledProviders();
-
-      if (!in_array($providerName, $enabledProviders, true)) {
-          return false;
-      }
-
-      $multiProvider = (bool) App::get('system.multi_provider', false);
-
-      if (!$multiProvider) {
-          foreach ($enabledProviders as $name) {
-              if ($name === $providerName) {
-                  continue;
-              }
-
-              $provider = $this->getProvider($name);
-
-              if ($provider->isAvailable()) {
-                  if (!$provider->stop()) {
-                      return false;
+      $this->activationError = '';
+      $stage = 'A provider beállításainak ellenőrzése';
+      try {
+          $providerName = trim((string)($model['provider'] ?? ''));
+          $baseModel = trim((string)($model['basemodel'] ?? ''));
+          if ($providerName === '' || $baseModel === '') {
+              return $this->activationFailed('A modell provider vagy alapmodell mezője üres.');
+          }
+          $enabledProviders = $this->getEnabledProviders();
+          if (!in_array($providerName, $enabledProviders, true)) {
+              return $this->activationFailed('A modell providere ('.$providerName.') nincs engedélyezve a system.providers beállításban, vagy nincs a támogatott PROVIDERS listában.');
+          }
+          $multiProvider = (bool)App::get('system.multi_provider', false);
+          if (!$multiProvider) {
+              foreach ($enabledProviders as $name) {
+                  if ($name === $providerName) continue;
+                  $stage = 'A másik provider ellenőrzése/leállítása ('.$name.')';
+                  $provider = $this->getProvider($name);
+                  if ($provider->isAvailable() && !$provider->stop()) {
+                      return $this->activationFailed('A másik provider ('.$name.') leállítása sikertelen.');
                   }
               }
           }
+          $stage = 'A kiválasztott modell betöltése ('.$providerName.')';
+          if (!$this->getProvider($providerName)->prepare($model)) {
+              return $this->activationFailed('A kiválasztott modell betöltése sikertelen ('.$providerName.'). Ellenőrizd a provider címét, indítási beállításait és naplóját.');
+          }
+          return true;
+      } catch (\Throwable $error) {
+          error_log('Mara model activation exception: '.$error->getMessage());
+          return $this->activationFailed($stage.' közben szerverhiba történt. A részletek a PHP szervernaplóban találhatók.');
       }
-
-      return $this->getProvider($providerName)
-          ->prepare($model);
-  }    
+  }
 
 /**
  * Get selectable base models for a provider without changing the

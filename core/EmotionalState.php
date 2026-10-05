@@ -12,7 +12,7 @@ final class EmotionalState
         return array_fill_keys(self::AXES, 0);
     }
 
-    /** Validate tool input without silently clamping, truncating or inventing values. */
+    /** Keep emotion scores strict; shorten only overlong explanatory notes. */
     public static function validate(array $args): array
     {
         $expected = array_merge(self::AXES, ['note']);
@@ -30,9 +30,29 @@ final class EmotionalState
             throw new \InvalidArgumentException('A short emotional-state note is required.');
         }
         $note = trim($args['note']);
-        $length = function_exists('mb_strlen') ? mb_strlen($note) : strlen($note);
-        if ($note === '' || $length > 240) {
-            throw new \InvalidArgumentException('The note must contain 1 to 240 characters.');
+        if ($note === '') {
+            throw new \InvalidArgumentException('A non-empty emotional-state note is required.');
+        }
+        if (!preg_match('//u', $note)) {
+            throw new \InvalidArgumentException('The note must be valid UTF-8.');
+        }
+        // Explicit UTF-8 keeps accented letters intact regardless of mb_internal_encoding.
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            $length = mb_strlen($note, 'UTF-8');
+            if ($length > 240) {
+                $note = mb_substr($note, 0, 240, 'UTF-8');
+            }
+        } else {
+            // Preserve Unicode characters even without the mbstring extension.
+            $characters = preg_split('//u', $note, -1, PREG_SPLIT_NO_EMPTY);
+            $length = count($characters);
+            if ($length > 240) {
+                $note = implode('', array_slice($characters, 0, 240));
+            }
+        }
+        if ($length > 240) {
+            self::log(['status' => 'NOTE_TRUNCATED',
+                'original_length' => $length, 'saved_length' => 240]);
         }
         return ['state' => $state, 'note' => $note];
     }
