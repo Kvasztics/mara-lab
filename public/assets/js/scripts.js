@@ -2179,3 +2179,96 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (error) { status.textContent = 'Nem sikerült másolni; a szöveg kézzel is kijelölhető.'; }
     });
 });
+
+// GPU monitoring: one request at a time, only on a visible enabled surface.
+document.addEventListener('DOMContentLoaded', () => {
+    const mini = document.getElementById('gpu-mini');
+    const test = document.getElementById('test_mode');
+    const toggle = document.getElementById('gpu-enabled');
+    const panel = document.getElementById('settings-system');
+    const details = document.getElementById('gpu-details');
+    if (!mini && !details) return;
+    let timer = null, controller = null, busy = false, generation = 0;
+    function mode() {
+        if (document.hidden) return '';
+        if (mini && test?.checked) return 'mini';
+        if (details && toggle?.checked && panel && !panel.hidden) return 'details';
+        return '';
+    }
+    function unavailable(message) {
+        if (mini) {
+            const bar = document.getElementById('gpu-mini-bar');
+            bar.removeAttribute('aria-valuenow');
+            bar.setAttribute('aria-valuetext', message);
+            bar.title = message;
+            document.getElementById('gpu-mini-fill').style.width = '0%';
+            document.getElementById('gpu-mini-value').textContent = 'N/A';
+        }
+        if (details) details.textContent = message;
+    }
+    function render(data, view) {
+        if (!data.available || !data.gpus?.length) { unavailable(data.message || 'GPU-adatok nem elérhetők.'); return; }
+        if (view === 'mini') {
+            // Sidebar represents the first GPU. Details show each GPU separately.
+            const gpu = data.gpus[0];
+            const percent = Math.max(0, Math.min(100, Number(gpu.percent)));
+            const bar = document.getElementById('gpu-mini-bar');
+            const title = gpu.name + ': ' + gpu.used + ' / ' + gpu.total + ' MiB VRAM';
+            bar.setAttribute('aria-valuenow', String(percent));
+            bar.setAttribute('aria-valuetext', title);
+            bar.title = title;
+            document.getElementById('gpu-mini-fill').style.width = percent + '%';
+            document.getElementById('gpu-mini-value').textContent = Math.round(percent) + '%';
+        } else {
+            details.replaceChildren();
+            const add = text => { const p = document.createElement('p'); p.textContent = text; details.appendChild(p); };
+            for (const gpu of data.gpus) {
+                add(gpu.name + ' (GPU ' + gpu.index + ')');
+                add('VRAM: ' + gpu.used + ' / ' + gpu.total + ' MiB (' + gpu.percent + '%) · Szabad: ' + (gpu.free ?? 'N/A') + ' MiB');
+                add('GPU-terhelés: ' + (gpu.utilization ?? 'N/A') + '% · Hőmérséklet: ' + (gpu.temperature ?? 'N/A') + ' °C');
+                const processes = (data.processes || []).filter(p => p.gpu_uuid === gpu.uuid);
+                add('Számítási folyamatok (a grafikus alkalmazások nincsenek a listában):');
+                if (!data.processes_available) add('A folyamatlista nem elérhető.');
+                else if (!processes.length) add('Nincs aktív számítási folyamat.');
+                for (const process of processes) add('PID ' + process.pid + ' · ' + process.name + ' · ' + (process.memory ?? 'N/A') + ' MiB');
+            }
+        }
+    }
+    async function refresh() {
+        const view = mode();
+        if (!view || busy) return;
+        busy = true;
+        const ticket = generation;
+        const request = new AbortController();
+        controller = request;
+        const deadline = setTimeout(() => request.abort(), 9000);
+        try {
+            const response = await fetch('/main/gpustatus' + (view === 'details' ? '?details=1' : ''), {cache:'no-store', signal:request.signal});
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'GPU-adatok nem elérhetők.');
+            if (ticket === generation && mode() === view) render(data, view);
+        } catch (error) {
+            if (ticket === generation && mode() === view) unavailable(error.name === 'AbortError' ? 'A GPU lekérdezése túllépte a várakozási időt.' : error.message);
+        } finally {
+            clearTimeout(deadline);
+            busy = false;
+            if (controller === request) controller = null;
+            if (mode()) timer = setTimeout(refresh, ticket === generation ? 5000 : 0);
+        }
+    }
+    function sync() {
+        generation++;
+        clearTimeout(timer);
+        timer = null;
+        if (controller) controller.abort();
+        if (mini) mini.hidden = !test?.checked;
+        if (details) details.hidden = !toggle?.checked;
+        if (mode() && !busy) refresh();
+    }
+    test?.addEventListener('change', sync);
+    toggle?.addEventListener('change', sync);
+    document.addEventListener('visibilitychange', sync);
+    if (panel) new MutationObserver(sync).observe(panel, {attributes:true,attributeFilter:['hidden']});
+    window.addEventListener('pagehide', () => { generation++; clearTimeout(timer); controller?.abort(); });
+    sync();
+});

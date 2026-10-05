@@ -363,6 +363,35 @@ public function settings($var = []): void
  * @param array $var
  * @return void
  */
+public function gpustatus($var = []): void
+  {
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+        http_response_code(405);
+        header('Allow: GET');
+        echo json_encode(['success' => false, 'error' => 'GET kérés szükséges.']);
+        exit;
+    }
+    $details = ($_GET['details'] ?? '') === '1';
+    if ($details && !User::isAdmin()) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'A részletes GPU-adatok csak adminisztrátornak elérhetők.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    // Monitoring is read-only; do not keep the session locked during the GPU query.
+    if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+    try {
+        echo json_encode(['success' => true] + GpuMonitor::read($details), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    } catch (\Throwable $error) {
+        error_log('Mara GPU monitor: '.$error->getMessage());
+        echo json_encode(['success' => false, 'error' => 'A GPU-adatok lekérdezése sikertelen.'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+  }
+
 public function logread($var = []): void
   {
     User::loggedIn();

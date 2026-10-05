@@ -56,6 +56,16 @@ const voiceData = <?= json_encode(
       RENDSZER
       ========================================================== -->
           <section class="settings-panel active" id="settings-system">
+            <?php if (\mara\core\User::isAdmin()): ?>
+            <div class="settings-section" id="gpu-system">
+              <div class="side-option" style="display:flex;justify-content:space-between;align-items:center">
+                <h2>GPU / VRAM figyelés</h2>
+                <label class="switch"><input type="checkbox" id="gpu-enabled" aria-label="GPU figyelés"><span class="switch-slider"></span></label>
+              </div>
+              <div id="gpu-details" hidden></div>
+            </div>
+            <?php endif; ?>
+
             <div class="settings-section">
               <div class="settings-section-title">
                 <h2><?php echo LANG['SETTINGS_GENERAL']; ?></h2>

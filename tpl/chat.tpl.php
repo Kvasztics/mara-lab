@@ -61,6 +61,13 @@
         </div>
 
 
+        <div id="gpu-mini" style="margin:8px 0" hidden>
+          <div id="gpu-mini-bar" role="progressbar" aria-label="GPU VRAM foglaltság" aria-valuemin="0" aria-valuemax="100" style="height:15px;background:#e5e7eb;border-radius:3px;position:relative;overflow:hidden">
+            <div id="gpu-mini-fill" style="height:100%;width:0;background:#1976d2"></div>
+            <span id="gpu-mini-value" style="position:absolute;right:4px;top:0;font:11px/15px sans-serif;color:#111"></span>
+          </div>
+        </div>
+
         <!-- TEST DATA -->
 
         <div class="test-data" id="model_metrics">
