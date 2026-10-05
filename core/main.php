@@ -326,7 +326,8 @@ public function settings($var = []): void
       {
         $providers[$provider] = $this->SET->values($provider);
       }
-    $pagedata['providerdata'] = $providers;  
+    $pagedata['providerdata'] = $providers;
+    $pagedata['logSources'] = User::isAdmin() ? LogViewer::sources() : [];  
     
     $pagedata['voiceproviders'] = array_filter(
         array_map(
@@ -362,6 +363,35 @@ public function settings($var = []): void
  * @param array $var
  * @return void
  */
+public function logread($var = []): void
+  {
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    if (!User::isAdmin()) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Csak adminisztrátornak elérhető.']);
+        exit;
+    }
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+        http_response_code(405);
+        header('Allow: GET');
+        echo json_encode(['success' => false, 'error' => 'GET kérés szükséges.']);
+        exit;
+    }
+    try {
+        $result = LogViewer::read((string)($_GET['source'] ?? ''));
+        echo json_encode(['success' => true] + $result,
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    } catch (\Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()],
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+    exit;
+  }
+
 public function settingssave($var = []): void
   {
     User::loggedIn();

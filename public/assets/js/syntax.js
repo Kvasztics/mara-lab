@@ -1,6 +1,21 @@
 function w3CodeColor(elmnt, mode) {
   var lang = (mode || "html");
   var elmntObj = (document.getElementById(elmnt) || elmnt);
+  if (lang === "log") {
+    // Logs are untrusted text: never feed their contents into the code parsers.
+    var lines = elmntObj.textContent.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').split('\n');
+    elmntObj.replaceChildren();
+    lines.forEach(function (line, index) {
+      var span = document.createElement('span');
+      var color = /\b(error|fatal|failed|failure|rejected|exception)\b/i.test(line) ? '#ff7777'
+        : /\b(warn|warning|deprecated|truncated)\b/i.test(line) ? '#f0cb67'
+        : /\b(updated|success|ready|listening)\b/i.test(line) ? '#84ce94' : '#ddd';
+      span.style.color = color;
+      span.textContent = line + (index < lines.length - 1 ? '\n' : '');
+      elmntObj.appendChild(span);
+    });
+    return;
+  }
   var elmntTxt = elmntObj.innerHTML;
   var tagcolor = "#ddd";
   var tagnamecolor = "#f43a7b";

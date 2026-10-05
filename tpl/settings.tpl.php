@@ -46,6 +46,9 @@ const voiceData = <?= json_encode(
               data-tab="stt">
               <?php echo LANG['SPEECH_RECOGNITION']; ?>
             </button>
+            <?php if (!empty($logSources)): ?>
+            <button type="button" class="settings-tab" data-tab="logs">Naplók</button>
+            <?php endif; ?>
           </nav>
 
           <div class="settings-content">
@@ -1042,6 +1045,29 @@ const voiceData = <?= json_encode(
             </div>
 
           </section>
+
+<?php if (!empty($logSources)): ?>
+<section class="settings-panel" id="settings-logs" hidden>
+  <div class="settings-section">
+    <h2>Naplók</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin:16px 0">
+    <?php $firstLog = true; foreach ($logSources as $logId => $logSource): ?>
+      <label style="display:flex;align-items:center;gap:8px">
+        <span class="switch"><input type="radio" name="log_view_source" value="<?= htmlspecialchars($logId, ENT_QUOTES, 'UTF-8') ?>" <?= $firstLog ? 'checked' : '' ?>><span class="switch-slider"></span></span>
+        <?= htmlspecialchars($logSource['label'], ENT_QUOTES, 'UTF-8') ?>
+      </label>
+    <?php $firstLog = false; endforeach; ?>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+      <button type="button" class="btn btn-primary" id="logs-refresh">Frissítés</button>
+      <button type="button" class="btn" id="logs-copy">Másolás</button>
+      <label style="display:flex;align-items:center;gap:8px"><span class="switch"><input type="checkbox" id="logs-auto"><span class="switch-slider"></span></span>Automatikus frissítés (5 s)</label>
+    </div>
+    <p id="logs-status" role="status" aria-live="polite"></p>
+    <pre style="background:#111;color:#ddd;height:420px;max-width:100%;overflow:auto;padding:16px;border-radius:8px;white-space:pre;font:12px/1.6 monospace" tabindex="0" aria-label="Napló tartalma"><code id="logs-content"></code></pre>
+  </div>
+</section>
+<?php endif; ?>
         </div>
         </form>
       </section>

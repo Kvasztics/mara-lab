@@ -1,7 +1,1 @@
-# 2026-10-05 — Small chat features
-- Latest uploaded Chat(3), mChat(2), chat_ajax(2) inspected. Existing getChat already scopes ownership; no DB repository edit needed.
-- Emotional Ball diagram visibility follows the front switch, with no state deletion and no disabled background reads.
-- Added owned-conversation ShareGPT JSON export through the existing chat dropdown handler; works for inactive chats and refreshed sidebar HTML.
-- Kept the persistent system message and text turns. Excluded tool/attachment/metrics fields, preserving Unicode and line breaks.
-- Retained today's model-switch status errors.
-- Pending separate fix: robust llama.cpp lifecycle/PID handling. Manual corrected PID confirmed switching works, but startup root cause remains unresolved.
+2026-10-05: Added admin-only Settings Logs tab using current uploaded settings/main/scripts/syntax files. Added bounded LogViewer and main/logread endpoint. Added exclusive blue switches, refresh, auto refresh and copy. Added safe log category to existing syntax highlighter, black 420px viewer. No DB or provider lifecycle changes. PHP/JS validation and reader/highlighter tests passed; local browser test pending.

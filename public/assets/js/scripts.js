@@ -2085,3 +2085,97 @@ function closeImageModal(mid)
 {
     document.getElementById(mid).style.display = 'none';
 }
+// Settings log viewer: reads only while its tab is visible.
+document.addEventListener('DOMContentLoaded', function () {
+    const panel = document.getElementById('settings-logs');
+    if (!panel) return;
+    const content = document.getElementById('logs-content');
+    const status = document.getElementById('logs-status');
+    const auto = document.getElementById('logs-auto');
+    const refresh = document.getElementById('logs-refresh');
+    let controller = null;
+    let version = 0;
+    let timer = null;
+    let raw = '';
+    function visible() {
+        return panel.classList.contains('active') && !panel.hidden && !document.hidden;
+    }
+    function cancel() {
+        version++;
+        if (controller) controller.abort();
+        controller = null;
+        refresh.disabled = false;
+        clearTimeout(timer);
+    }
+    function schedule() {
+        clearTimeout(timer);
+        if (visible() && auto.checked) timer = setTimeout(read, 5000);
+    }
+    async function read() {
+        if (!visible()) return;
+        cancel();
+        const current = version;
+        const selected = panel.querySelector('[name="log_view_source"]:checked');
+        if (!selected) return;
+        controller = new AbortController();
+        refresh.disabled = true;
+        status.textContent = 'Betöltés…';
+        try {
+            const response = await fetch('/main/logread?source=' + encodeURIComponent(selected.value), {
+                cache: 'no-store', signal: controller.signal,
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || 'A napló nem olvasható.');
+            if (current !== version || !visible()) return;
+            raw = result.text;
+            const box = content.parentElement;
+            const follow = box.scrollHeight - box.scrollTop - box.clientHeight < 40 || !content.textContent;
+            content.textContent = raw;
+            if (typeof w3CodeColor === 'function') w3CodeColor(content, 'log');
+            if (follow) box.scrollTop = box.scrollHeight;
+            status.textContent = raw ? result.lines + ' sor · ' + new Date(result.updated).toLocaleTimeString() + (result.limited ? ' · csak a napló vége' : '') : 'A napló üres.';
+        } catch (error) {
+            if (current !== version || error.name === 'AbortError') return;
+            raw = '';
+            content.textContent = '';
+            status.textContent = error.message;
+        } finally {
+            if (current === version) {
+                controller = null;
+                refresh.disabled = false;
+                schedule();
+            }
+        }
+    }
+    refresh.addEventListener('click', read);
+    panel.querySelectorAll('[name="log_view_source"]').forEach(input => input.addEventListener('change', function () {
+        raw = ''; content.textContent = ''; read();
+    }));
+    auto.addEventListener('change', schedule);
+    document.querySelectorAll('.settings-tab').forEach(tab => tab.addEventListener('click', function () {
+        cancel();
+        if (visible()) read();
+    }));
+    document.addEventListener('visibilitychange', function () {
+        cancel();
+        if (visible() && auto.checked) read();
+    });
+    window.addEventListener('pagehide', cancel);
+    document.getElementById('logs-copy').addEventListener('click', async function () {
+        try {
+            if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(raw);
+            else {
+                const area = document.createElement('textarea');
+                area.value = raw;
+                area.style.position = 'fixed'; area.style.opacity = '0';
+                document.body.appendChild(area);
+                try {
+                    area.select();
+                    if (!document.execCommand('copy')) throw new Error('A másolás nem engedélyezett.');
+                } finally { area.remove(); }
+            }
+            status.textContent = 'Napló másolva.';
+        } catch (error) { status.textContent = 'Nem sikerült másolni; a szöveg kézzel is kijelölhető.'; }
+    });
+});
