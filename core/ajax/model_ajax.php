@@ -40,6 +40,8 @@ class model_ajax
   public function changemodel(): void
   {
     User::loggedIn();
+    // Direct startup and shutdown are bounded; allow PHP enough time to return JSON.
+    @set_time_limit(300);
     header('Content-Type: application/json; charset=utf-8');
     try {
         $modelId = (int)($_POST['id'] ?? 0);

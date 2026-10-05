@@ -46,30 +46,14 @@ public function __construct(ToolRegistry $registry)
     {
       $started = microtime(true);
 
-      $tool = $this->registry->get($name);
-
-      if ($tool === null)
-        {
-          throw new \RuntimeException(
-              'Unknown tool: '.$name
-          );
-        }
-
-      Status::set(
-          $tool->status()
-      );
-
-      $this->log(
-          'START',
-          $name,
-          [
-            'args'    => $args,
-            'context' => $context
-          ]
-      );
-
+      $this->log('START', $name, ['args' => $args, 'context' => $context]);
       try
         {
+          $tool = $this->registry->get($name);
+          if ($tool === null) {
+              throw new \RuntimeException('Unknown tool: '.$name);
+          }
+          Status::set($tool->status());
           $result = $tool->execute(
               $args,
               $context
@@ -130,7 +114,7 @@ public function definitions(array $names): array
   /**
    * Write tool log
    */
-  private function log(
+  public function log(
       string $status,
       string $tool,
       array $data = []
@@ -143,15 +127,41 @@ public function definitions(array $names): array
       'data'   => $data
     ];
 
-    file_put_contents(
-        DIR_ROOT.'/logs/tools.log',
-        json_encode(
-            $entry,
-            JSON_UNESCAPED_UNICODE |
-            JSON_UNESCAPED_SLASHES
-        ).PHP_EOL,
-        FILE_APPEND | LOCK_EX
-    );
+    // Logging must never interrupt a chat, even when the directory is unwritable.
+    try {
+        $directory = dirname(__DIR__).'/var/log';
+        if (!is_dir($directory) && !@mkdir($directory, 0750, true) && !is_dir($directory)) {
+            error_log('Mara tool log: cannot create log directory');
+            return;
+        }
+        $json = json_encode(self::sanitize($entry), JSON_UNESCAPED_UNICODE |
+            JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if (@file_put_contents($directory.'/tools.log', $json.PHP_EOL, FILE_APPEND | LOCK_EX) === false) {
+            error_log('Mara tool log: cannot write tools.log');
+        }
+    } catch (\Throwable $e) {
+        error_log('Mara tool log: logging failed');
+    }
+  }
+
+  private static function sanitize(mixed $value, string $key = '', int $depth = 0): mixed
+  {
+    if (preg_match('/password|passwd|secret|token|api[_-]?key|authorization|cookie|base64|image/i', $key)) {
+        return '[REDACTED]';
+    }
+    if ($depth > 8) return '[DEPTH LIMIT]';
+    if (is_array($value)) {
+        $safe = [];
+        foreach (array_slice($value, 0, 100, true) as $k => $v) {
+            $safe[$k] = self::sanitize($v, (string)$k, $depth + 1);
+        }
+        return $safe;
+    }
+    if (is_string($value)) {
+        $value = preg_replace('/data:[^\s]+;base64,[A-Za-z0-9+\/=]+/i', '[IMAGE OMITTED]', $value) ?? '';
+        $value = preg_replace('/([?&](?:token|key|api_key|password)=)[^&\s]+/i', '$1[REDACTED]', $value) ?? '';
+        return function_exists('mb_substr') ? mb_substr($value, 0, 4000, 'UTF-8') : substr($value, 0, 4000);
+    }
+    return is_scalar($value) || $value === null ? $value : '[OBJECT]';
   }
 }
-?>

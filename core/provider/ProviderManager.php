@@ -61,7 +61,11 @@ final class ProviderManager
               }
           }
           $stage = 'A kiválasztott modell betöltése ('.$providerName.')';
-          if (!$this->getProvider($providerName)->prepare($model)) {
+          $selectedProvider = $this->getProvider($providerName);
+          if (!$selectedProvider->prepare($model)) {
+              if ($selectedProvider instanceof LlamaCppProvider && $selectedProvider->getStartupError() !== '') {
+                  return $this->activationFailed($selectedProvider->getStartupError());
+              }
               return $this->activationFailed('A kiválasztott modell betöltése sikertelen ('.$providerName.'). Ellenőrizd a provider címét, indítási beállításait és naplóját.');
           }
           return true;

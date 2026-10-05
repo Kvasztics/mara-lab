@@ -19,10 +19,10 @@ class UpdateEmotionalState implements ToolInterface
             $properties[$axis] = ['type' => 'integer', 'minimum' => 0, 'maximum' => 10];
         }
         $properties['note'] = ['type' => 'string', 'minLength' => 1, 'maxLength' => 240,
-            'description' => 'One short explanation of the character-state change.'];
+            'description' => 'One short Hungarian sentence (1-240 characters) explaining your current character emotions from the conversation. If unchanged, briefly explain why they still fit.'];
         return ['type' => 'function', 'function' => [
             'name' => $this->name(),
-            'description' => 'Update your fictional character emotional state based on the conversation and character traits; do not rate the user.',
+            'description' => 'When this tool is available, call it exactly once for every user message BEFORE your final conversational reply. Do this automatically: do not wait for the user to ask for an emotional update. Submit all eight emotion values as integers from 0 to 10 and a short Hungarian note. Evaluate your fictional character emotions from the latest message, conversation and character traits; these are not ratings of the user. Values may stay unchanged when justified, but do not retain an emotion merely because it was present before. After the tool result, continue your normal Hungarian reply. Only claim that the state was saved if the tool confirms success. Do not call again after a successful update for the same user message.',
             'parameters' => ['type' => 'object', 'properties' => $properties,
                 'required' => array_merge(EmotionalState::AXES, ['note']), 'additionalProperties' => false],
         ]];

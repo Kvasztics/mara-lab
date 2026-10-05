@@ -20,6 +20,48 @@ class LlamaCppProvider implements ProviderInterface
     private int $gpuLayers;
     private int $parallel;     
     private ?array $model = null;
+    private string $startupError = '';
+    private int $launchedPid = 0;
+    private int $startupLogOffset = 0;
+
+    public function getStartupError(): string { return $this->startupError; }
+
+    private function processAlive(int $pid): bool
+    {
+        if ($pid <= 0) return false;
+        $stat = @file_get_contents('/proc/'.$pid.'/stat');
+        if (is_string($stat)) {
+            $end = strrpos($stat, ')');
+            if ($end !== false && in_array(substr($stat, $end + 2, 1), ['Z', 'X'], true)) return false;
+            return true;
+        }
+        return function_exists('posix_kill') && @posix_kill($pid, 0);
+    }
+
+    private function startupFailure(string $fallback): bool
+    {
+        $text = '';
+        $handle = @fopen($this->logFile, 'rb');
+        if ($handle !== false) {
+            $size = (int)(fstat($handle)['size'] ?? 0);
+            $offset = $size < $this->startupLogOffset ? 0 : $this->startupLogOffset;
+            fseek($handle, max($offset, $size - 65536));
+            $text = (string)stream_get_contents($handle, 65536);
+            fclose($handle);
+        }
+        if (preg_match('/out of memory|unable to allocate CUDA|failed to allocate CUDA/i', $text)) {
+            $fallback = 'A modell betöltése sikertelen: nincs elég szabad GPU-memória. Szabadíts fel VRAM-ot (például a képgenerátor leállításával), majd próbáld újra.';
+        } elseif (preg_match('/address already in use|failed to bind/i', $text)) {
+            $fallback = 'A llama.cpp portját már egy másik folyamat használja.';
+        } elseif (preg_match('/invalid gguf|invalid magic|unsupported.*architecture/i', $text)) {
+            $fallback = 'A modellfájl hibás, vagy ezt a modellt a llama.cpp jelenlegi verziója nem támogatja.';
+        }
+        $this->startupError = $fallback;
+        $this->modelId = null;
+        if ($this->launchedPid > 0 && !$this->processAlive($this->launchedPid) &&
+            (int)@file_get_contents($this->pidFile) === $this->launchedPid) @unlink($this->pidFile);
+        return false;
+    }
 
 	public function __construct(array $config)
 	{
@@ -33,8 +75,8 @@ class LlamaCppProvider implements ProviderInterface
     $this->modelDir = rtrim($config['model_dir'] ?? '', '/');
     $this->pidFile = $config['pid_file'] ?? '/tmp/mara-llama.pid';
     $this->logFile = $config['log_file'] ?? '/tmp/mara-llama.log';
-    $this->startupTimeout = (int)($config['startup_timeout'] ?? 60);
-    $this->startupPollMs  = (int)($config['startup_poll_ms'] ?? 250);
+    $this->startupTimeout = max(1, min(120, (int)($config['startup_timeout'] ?? 60)));
+    $this->startupPollMs  = max(50, min(1000, (int)($config['startup_poll_ms'] ?? 250)));
     $this->gpuLayers      = (int)($config['gpu_layers'] ?? 0);
     $this->parallel       = (int)($config['parallel'] ?? 1);        
 	}
@@ -519,7 +561,8 @@ error_log(
                 'Content-Type: application/json',
                 'Accept: application/json',
             ],
-            CURLOPT_TIMEOUT        => 600,
+            CURLOPT_CONNECTTIMEOUT => 2,
+            CURLOPT_TIMEOUT => $method === 'GET' && in_array($endpoint, ['/v1/models', '/health'], true) ? 2 : 600,
         ];
 
         if ($payload !== null) {
@@ -566,6 +609,8 @@ error_log(
     public function prepare(array $model): bool
     {
         $this->model = null;
+        $this->startupError = '';
+        $this->launchedPid = 0;
 
         $baseModel = (string)($model['basemodel'] ?? '');
         $mmproj    = (string)($model['mmproj'] ?? '');
@@ -579,11 +624,16 @@ error_log(
             return false;
         }
 
+        try {
         $prepared = match ($this->mode) {
             'direct' => $this->prepareDirect($baseModel, $mmproj, $model['parameters'] ?? []),
             'router' => $this->prepareRouter($baseModel),
             default  => false,
         };
+        } catch (RuntimeException $error) {
+            $this->startupError = $error->getMessage();
+            return false;
+        }
 
         if (!$prepared) {
             return false;
@@ -655,23 +705,19 @@ private function prepareDirect(
           return false;
       }
 
-      $maxAttempts = (int)ceil(
-          ($this->startupTimeout * 1000) / $this->startupPollMs
-      );
-
-      for ($i = 0; $i < $maxAttempts; $i++) {
-          usleep($this->startupPollMs * 1000);
-
+      $deadline = microtime(true) + $this->startupTimeout;
+      while (microtime(true) < $deadline) {
+          if (!$this->processAlive($this->launchedPid)) {
+              return $this->startupFailure('A llama.cpp folyamat kilépett a modell betöltése közben. A részletek a llama.cpp naplóban találhatók.');
+          }
           $runningModel = $this->getDirectModel();
-
           if ($runningModel === $modelId) {
               $this->modelId = $modelId;
               return true;
           }
+          usleep($this->startupPollMs * 1000);
       }
-
-      $this->modelId = null;
-      return false;
+      return $this->startupFailure('A modell betöltése túllépte a '.$this->startupTimeout.' másodperces várakozási időt. A folyamat még futhat; ellenőrizd a llama.cpp naplót.');
   }	
 	
 	private function getDirectModel(): ?string
@@ -691,6 +737,8 @@ private function startDirectServer(
     array $parameters = []
 ): bool
 {
+    clearstatcache(true, $this->logFile);
+    $this->startupLogOffset = is_file($this->logFile) ? (int)filesize($this->logFile) : 0;
     $modelId   = pathinfo($baseModel, PATHINFO_FILENAME);
     $modelFile = $this->modelDir . '/' . $baseModel;
 
@@ -795,13 +843,14 @@ private function startDirectServer(
     proc_close($process);
 
     if ($pid <= 0) {
-        return false;
+        return $this->startupFailure('Nem sikerült elindítani a llama.cpp folyamatot.');
     }
+    $this->launchedPid = $pid;
 
-    file_put_contents(
-        $this->pidFile,
-        (string) $pid
-    );
+    if (@file_put_contents($this->pidFile, (string)$pid, LOCK_EX) === false) {
+        if ($this->processAlive($pid)) @posix_kill($pid, 15);
+        return $this->startupFailure('A llama.cpp PID-fájlja nem írható. Ellenőrizd a fájl jogosultságait.');
+    }
 
     return true;
 }
@@ -819,17 +868,18 @@ private function startDirectServer(
           return true;
       }
 
+      if (!$this->processAlive($pid)) {
+          @unlink($this->pidFile);
+          return !$this->isDirectServerRunning();
+      }
       // SIGTERM
       if (!posix_kill($pid, 15)) {
           return false;
       }
 
       // Megvárjuk, amíg a llama-server ténylegesen eltűnik.
-      $maxAttempts = (int)ceil(
-          ($this->startupTimeout * 1000) / $this->startupPollMs
-      );
-
-      for ($i = 0; $i < $maxAttempts; $i++) {
+      $deadline = microtime(true) + $this->startupTimeout;
+      while (microtime(true) < $deadline) {
           usleep($this->startupPollMs * 1000);
 
           if (!$this->isDirectServerRunning()) {

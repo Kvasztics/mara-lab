@@ -10,6 +10,7 @@ final class LogViewer
         return [
             'llamacpp' => ['label' => 'llama.cpp', 'path' => (string)App::get('llamacpp.log_file', '/tmp/mara-llama.log')],
             'emotional' => ['label' => 'Emotional Ball', 'path' => dirname(__DIR__).'/var/log/emotional-ball.log'],
+            'tools' => ['label' => 'Toolok', 'path' => dirname(__DIR__).'/var/log/tools.log'],
             'nginx' => ['label' => 'Nginx hibák', 'path' => '/var/log/nginx/error.log'],
         ];
     }

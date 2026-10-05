@@ -520,6 +520,7 @@ public function send(array $input): array
                         'error' => $emotionUpdated && $name === 'update_emotional_state'
                             ? 'Emotional state already updated for this response. Continue your normal reply.'
                             : 'This tool is not enabled for this response.'];
+                    $this->TOOLS->log('REJECTED', $name, ['args' => $args, 'chat_id' => $chatId, 'model_id' => $modelId, 'error' => $toolResult['error']]);
                 } else {
                     $toolResult = $this->TOOLS->run(
                         $name,

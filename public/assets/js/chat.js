@@ -703,9 +703,21 @@ micButton.addEventListener('click', () =>
   });
 
 
+let modelChanging = false;
+let activeModelSelection = null;
+document.addEventListener("DOMContentLoaded", () => { activeModelSelection = document.getElementById("model_list")?.value ?? null; });
+
 async function changeModel(modelId)
   {
-    if (chatSending || attachmentUploading) { return; }
+    const selector = document.getElementById('model_list');
+    if (chatSending || attachmentUploading || modelChanging) {
+        if (selector && activeModelSelection !== null) selector.value = activeModelSelection;
+        return;
+    }
+    modelChanging = true;
+    if (selector) selector.disabled = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 270000);
     clearAttachment();
 
     const data = new FormData();
@@ -719,10 +731,13 @@ async function changeModel(modelId)
         const response = await fetch('/model_ajax/changemodel',
           {
             method: 'POST',
-            body: data
+            body: data,
+            signal: controller.signal
           });
 
-        const result = await response.json();
+        let result;
+        try { result = await response.json(); }
+        catch (_) { throw new Error('A modellváltás nem adott érvényes választ (HTTP ' + response.status + '). Ellenőrizd a llama.cpp és a webszerver naplóját.'); }
 
         if (!response.ok || !result.success)
           {
@@ -732,6 +747,7 @@ async function changeModel(modelId)
         document.getElementById('model_list').innerHTML    = result.models;
         document.getElementById('chat_list').innerHTML     = result.titles;
         document.getElementById('modelimage').src          = result.image;
+        activeModelSelection = String(result.model_id ?? modelId);
         refreshEmotionalChart();
         document.getElementById('chat_messages').innerHTML = '';
         document.getElementById('chat_message').value       = '';
@@ -739,10 +755,14 @@ async function changeModel(modelId)
     catch (error)
       {
         console.error('Model change failed:', error);
-        setStatus(error.message || 'A modellváltás sikertelen.');
+        if (selector && activeModelSelection !== null) selector.value = activeModelSelection;
+        setStatus(error.name === 'AbortError' ? 'A modellváltás válasza nem érkezett meg időben. Ellenőrizd a naplót, majd frissítsd az oldalt; a szerver még dolgozhat.' : (error.message || 'A modellváltás sikertelen.'));
       }
     finally
       {
+        clearTimeout(timeout);
+        modelChanging = false;
+        if (selector) selector.disabled = false;
         hideLoader();
       }
   }
