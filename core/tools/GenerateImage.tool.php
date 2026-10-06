@@ -93,178 +93,42 @@ public function execute(
     array $context = []
 ): mixed
   {
-    $prompt = trim(
-        (string)($args['prompt'] ?? '')
-    );
+    $prompt = trim((string)($args['prompt'] ?? ''));
 
-    if ($prompt === '')
-      {
+    if ($prompt === '') {
+        throw new \RuntimeException('Missing image prompt.');
+    }
+
+    $config = require __DIR__ . '/GenerateImage.config.php';
+
+    $backend = trim((string)\mara\core\App::get(
+        'system.image_backend',
+        ''
+    ));
+
+    $profile = $config['backends'][$backend] ?? null;
+
+    if (!is_array($profile) || !is_array($profile['request'] ?? null)) {
         throw new \RuntimeException(
-            'Missing image prompt.'
+            'Image backend is not configured: ' . $backend
         );
-      }
+    }
 
-    $config = require __DIR__
-        . '/GenerateImage.config.php';
+    $timeout = max(1, (int)($profile['timeout'] ?? 600));
+    @set_time_limit($timeout + 30);
 
-    $endpoint = trim(
-        (string)($config['endpoint'] ?? '')
-    );
+    $generator = new \mara\core\integration\ImageGenerator();
 
-    if ($endpoint === '')
-      {
-        throw new \RuntimeException(
-            'Image generation endpoint is not configured.'
-        );
-      }
-
-    $request = $config['request'] ?? [];
-
-    if (!is_array($request))
-      {
-        throw new \RuntimeException(
-            'Invalid image generation request configuration.'
-        );
-      }
-
-    /*
-     * Prompt always comes from the tool call.
-     */
-    $request['prompt'] = $prompt;
-
-    $ch = curl_init($endpoint);
-
-    curl_setopt_array($ch, [
-      CURLOPT_POST           => true,
-      CURLOPT_POSTFIELDS     => json_encode($request),
-      CURLOPT_RETURNTRANSFER => true,
-      CURLOPT_TIMEOUT        => 300,
-      CURLOPT_HTTPHEADER     => [
-        'Content-Type: application/json'
-      ]
-    ]);
-
-    $response = curl_exec($ch);
-
-    if ($response === false)
-      {
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        throw new \RuntimeException(
-            'Image generation error: '.$error
-        );
-      }
-
-    $httpCode = curl_getinfo(
-        $ch,
-        CURLINFO_HTTP_CODE
-    );
-
-    curl_close($ch);
-
-    if (
-        $httpCode < 200 ||
-        $httpCode >= 300
-    )
-      {
-        throw new \RuntimeException(
-            'Image generation HTTP error: '
-            . $httpCode
-        );
-      }
-
-    $result = json_decode(
-        $response,
-        true
-    );
-
-    if (
-        !is_array($result) ||
-        empty($result['images'][0])
-    )
-      {
-        throw new \RuntimeException(
-            'Image generation backend returned no image.'
-        );
-      }
-
-    $imageData = base64_decode(
-        $result['images'][0],
-        true
-    );
-
-    if ($imageData === false)
-      {
-        throw new \RuntimeException(
-            'Invalid generated image data.'
-        );
-      }
-
-    $savePath = rtrim(
+    return $generator->generate(
+        $backend,
+        $prompt,
+        $profile['request'],
         (string)($config['save_path'] ?? ''),
-        '/'
+        (string)($config['public_path'] ?? ''),
+        $timeout
     );
-
-    if ($savePath === '')
-      {
-        throw new \RuntimeException(
-            'Image save path is not configured.'
-        );
-      }
-
-    /*
-     * Create storage directory when necessary.
-     */
-    if (
-        !is_dir($savePath) &&
-        !mkdir($savePath, 0775, true)
-    )
-      {
-        throw new \RuntimeException(
-            'Image storage directory cannot be created.'
-        );
-      }
-
-    $filename =
-        'gen_'
-        . time()
-        . '_'
-        . bin2hex(random_bytes(3))
-        . '.png';
-
-    $filenamePath =
-        $savePath.'/'.$filename;
-
-    if (
-        file_put_contents(
-            $filenamePath,
-            $imageData
-        ) === false
-    )
-      {
-        throw new \RuntimeException(
-            'Generated image cannot be saved.'
-        );
-      }
-
-    $publicPath = '/'
-        . trim(
-            (string)($config['public_path'] ?? ''),
-            '/'
-        );
-
-    return [
-      'prompt' => $prompt,
-      'image'  =>
-          rtrim(DIR_HOST, '/')
-          . $publicPath
-          . '/'
-          . $filename
-          . '?t='
-          . time()
-    ];
   }
+
 }
 
 return new GenerateImage();

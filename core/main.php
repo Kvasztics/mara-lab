@@ -313,6 +313,7 @@ public function settings($var = []): void
   {    
     User::loggedIn();    
     $pagedata               = App::get('system');
+    $pagedata['lang']       = App::get('system.language');
     $mdata                  = $this->MOD->getSelectModelList();
     $pagedata['models']     = $mdata['models'];
     $pagedata['chats']      = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
@@ -443,6 +444,55 @@ public function settingssave($var = []): void
             $provider
         );
       }
+//----- Image backend settings ------------------------------------------
+    if (isset($_POST['image_backend'])) {
+        $backend = $_POST['image_backend'];
+        $imageSettings = [];
+
+        if (
+            !is_string($backend) ||
+            !in_array($backend, ['forge', 'qwen2'], true)
+        ) {
+            http_response_code(400);
+            exit(LANG['IMAGE_ERROR_BACKEND']);
+        }
+
+        $imageSettings['image_backend'] = $backend;
+
+        foreach (['forge_url', 'qwen2_url'] as $key) {
+            $value = $_POST[$key] ?? null;
+
+            if (!is_string($value)) {
+                http_response_code(400);
+                exit(LANG['IMAGE_ERROR_URL_MISSING']);
+            }
+
+            $value = rtrim(trim($value), '/');
+
+            if (
+                filter_var($value, FILTER_VALIDATE_URL) === false ||
+                !in_array(
+                    parse_url($value, PHP_URL_SCHEME),
+                    ['http', 'https'],
+                    true
+                )
+            ) {
+                http_response_code(400);
+                exit(LANG['IMAGE_ERROR_URL_INVALID']);
+            }
+
+            $imageSettings[$key] = $value;
+        }
+
+        foreach ($imageSettings as $key => $value) {
+            if (!$this->SET->setValue('system', $key, $value)) {
+                throw new \RuntimeException(
+                    LANG['IMAGE_ERROR_SETTINGS_SAVE']
+                );
+            }
+        }
+    }
+
 //----- Provider settings -----------------------------------------------
     $providerData = json_decode(
         $_POST['provider_data'] ?? '{}',

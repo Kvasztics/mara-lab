@@ -134,7 +134,57 @@ const voiceData = <?= json_encode(
 
               </div>
 
-          </section>
+
+            <div class="settings-section" id="image-backend-settings">
+              <div class="settings-section-title">
+                <h2><?= LANG['SETTINGS_IMAGE_TITLE'] ?></h2>
+                <p><?= LANG['SETTINGS_IMAGE_INFO'] ?></p>
+              </div>
+
+              <div class="settings-field">
+                <label for="image-backend"><?= LANG['SETTINGS_IMAGE_BACKEND'] ?></label>
+                <select id="image-backend" name="image_backend">
+                  <option value="qwen2"
+                    <?= \mara\core\App::get('system.image_backend') === 'qwen2' ? 'selected' : '' ?>>
+                    Qwen Image 2.1
+                  </option>
+                  <option value="forge"
+                    <?= \mara\core\App::get('system.image_backend') === 'forge' ? 'selected' : '' ?>>
+                    Forge
+                  </option>
+                </select>
+              </div>
+
+              <div class="settings-field">
+                <label for="qwen2-url"><?= LANG['SETTINGS_IMAGE_QWEN_URL'] ?></label>
+                <input type="url"
+                  id="qwen2-url"
+                  name="qwen2_url"
+                  required
+                  value="<?= htmlspecialchars(
+                      (string)\mara\core\App::get('system.qwen2_url', ''),
+                      ENT_QUOTES,
+                      'UTF-8'
+                  ) ?>"
+                  placeholder="http://127.0.0.1:7866">
+              </div>
+
+              <div class="settings-field">
+                <label for="forge-url"><?= LANG['SETTINGS_IMAGE_FORGE_URL'] ?></label>
+                <input type="url"
+                  id="forge-url"
+                  name="forge_url"
+                  required
+                  value="<?= htmlspecialchars(
+                      (string)\mara\core\App::get('system.forge_url', ''),
+                      ENT_QUOTES,
+                      'UTF-8'
+                  ) ?>"
+                  placeholder="http://127.0.0.1:7861">
+              </div>
+            </div>
+
+</section>
 
 
 <!-- ==========================================================

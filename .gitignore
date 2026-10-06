@@ -31,3 +31,28 @@ vendor/
 
 # Node
 node_modules/
+# Helyi adatbazis-dump
+/maralab.sql
+
+# Helyi kornyezeti konfiguraciok
+.env.*
+!.env.example
+!.env.*.example
+
+# Futasi adatok
+/var/log/
+/var/cache/
+/var/tmp/
+*.pid
+
+# Szerkesztoi es biztonsagi masolatok
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+
+# Tesztkimenetek
+/coverage/
+/.phpunit.cache/
+/.phpunit.result.cache
