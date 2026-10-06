@@ -1,0 +1,81 @@
+.common-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 70px 20px 20px;
+  background: rgba(0, 0, 0, .65);
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 200ms ease, visibility 200ms ease;
+}
+
+.common-modal .modal-content {
+  position: relative;
+  width: min(480px, 100%);
+  max-height: calc(100vh - 140px);
+  padding: 24px;
+  background: #fff;
+  color: #333;
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.common-modal .content {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.common-modal .content p {
+  margin: 0 0 24px;
+  padding-right: 24px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.common-modal .close {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.common-modal .close:hover { color: #111; }
+
+.common-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.common-modal .modal-actions button {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 6px;
+  background: #007bff;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.common-modal .modal-actions button:hover { background: #0759ad; }
+
+@media (max-width: 600px) {
+  .common-modal { align-items: center; padding: 16px; }
+  .common-modal .modal-content {
+    max-height: calc(100dvh - 32px);
+    padding: 20px;
+  }
+  .common-modal .content { max-height: calc(100dvh - 100px); }
+}

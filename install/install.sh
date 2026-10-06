@@ -42,7 +42,7 @@ if command -v ss >/dev/null; then
   [[ -z $(ss -H -ltn "sport = :$PORT") ]] || die 'A választott port foglalt.'
 fi
 fi
-PACKAGES=(nginx mariadb-server php-fpm php-cli php-mysql php-curl php-mbstring php-xml git ca-certificates curl)
+PACKAGES=(sudo nginx mariadb-server php-fpm php-cli php-mysql php-curl php-mbstring php-xml git ca-certificates curl)
 ((EXTRAS == 0)) || PACKAGES+=(ffmpeg espeak-ng)
 echo "Rendszer: Debian $VERSION_ID / $ARCH"
 echo "Cél: $DEST | port: $PORT | adatbázis: $DB"
@@ -94,6 +94,7 @@ systemctl enable --now mariadb php8.4-fpm nginx
 nginx -t
 validate_providers
 install_providers
+bash "$SOURCE/install/services.sh" www-data
 install -d -m 0755 "$DEST"
 tar -C "$SOURCE" --exclude=.git --exclude=config/config.php -cf - . | tar -C "$DEST" -xf -
 printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s' "$ADMIN_NAME" "$ADMIN_EMAIL" "$ADMIN_PASS" "$PROVIDERS" "$DEFAULT_PROVIDER" "$OLLAMA_URL" "$LLAMA_URL" "$LLAMA_BINARY" "$LLAMA_MODELS" | php "$DEST/install/setup.php" "$DEST" "$DB"

@@ -1,0 +1,38 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+    echo 'Usage: mara-service start|stop|status SERVICE' >&2
+    exit 2
+fi
+
+ACTION=$1
+SERVICE=$2
+
+case "$SERVICE" in
+    ollama|ollama.service) UNIT=ollama.service ;;
+    sd-forge|sd-forge.service) UNIT=sd-forge.service ;;
+    qwen-image|qwen-image.service) UNIT=qwen-image.service ;;
+    xtts-server|xtts-server.service) UNIT=xtts-server.service ;;
+    acestep|acestep.service) UNIT=acestep.service ;;
+    whisper-medium|whisper-medium.service) UNIT=whisper-medium.service ;;
+    wan-api|wan-api.service) UNIT=wan-api.service ;;
+    searxng|searxng.service) UNIT=searxng.service ;;
+    *)
+        echo 'Unsupported service.' >&2
+        exit 2
+        ;;
+esac
+
+case "$ACTION" in
+    start|stop)
+        exec /usr/bin/systemctl "$ACTION" "$UNIT"
+        ;;
+    status)
+        exec /usr/bin/systemctl is-active "$UNIT"
+        ;;
+    *)
+        echo 'Unsupported action.' >&2
+        exit 2
+        ;;
+esac

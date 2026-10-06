@@ -11,7 +11,6 @@ final class OllamaProvider implements ProviderInterface
     private int $startupTimeout;
     private int $startupPollMs;
     private ?string $modelId = null;
-    private string $serviceHelper = '/usr/local/bin/mara-service';
     private ?array $model = null;
 
     public function __construct(array $config)
@@ -138,37 +137,19 @@ public function capabilities(?string $modelId = null): array
             return true;
         }
 
-        $command = [
-            'sudo',
-            '-n',
-            $this->serviceHelper,
-            'stop',
-            'ollama',
-        ];
+        try {
+            $service = preg_replace('/\.service$/', '', $this->service);
+            $result = (new \mara\core\ServiceManager())->run(
+                'stop',
+                $service
+            );
 
-        $process = proc_open(
-            $command,
-            [
-                0 => ['file', '/dev/null', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w'],
-            ],
-            $pipes
-        );
-
-        if (!is_resource($process)) {
-            return false;
-        }
-
-        stream_get_contents($pipes[1]);
-        stream_get_contents($pipes[2]);
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        $exitCode = proc_close($process);
-
-        if ($exitCode !== 0) {
+            if (!$result['success']) {
+                error_log('Ollama service stop: ' . $result['output']);
+                return false;
+            }
+        } catch (\Throwable $error) {
+            error_log('Ollama service stop: ' . $error->getMessage());
             return false;
         }
 
@@ -403,37 +384,19 @@ public function chat(
             return true;
         }
 
-        $command = [
-            'sudo',
-            '-n',
-            $this->serviceHelper,
-            'start',
-            'ollama',
-        ];
+        try {
+            $service = preg_replace('/\.service$/', '', $this->service);
+            $result = (new \mara\core\ServiceManager())->run(
+                'start',
+                $service
+            );
 
-        $process = proc_open(
-            $command,
-            [
-                0 => ['file', '/dev/null', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w'],
-            ],
-            $pipes
-        );
-
-        if (!is_resource($process)) {
-            return false;
-        }
-
-        stream_get_contents($pipes[1]);
-        stream_get_contents($pipes[2]);
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        $exitCode = proc_close($process);
-
-        if ($exitCode !== 0) {
+            if (!$result['success']) {
+                error_log('Ollama service start: ' . $result['output']);
+                return false;
+            }
+        } catch (\Throwable $error) {
+            error_log('Ollama service start: ' . $error->getMessage());
             return false;
         }
 
