@@ -131,6 +131,8 @@ foreach ([
               <option value="512x512">512 × 512</option>
               <option value="768x768">768 × 768</option>
               <option value="1024x1024" selected>1024 × 1024</option>
+              <option value="992x992">992 × 992</option>
+              <option value="1152x864">1152 × 864</option>
               <option value="832x1216">832 × 1216</option>
               <option value="1216x832">1216 × 832</option>
               <option value="1024x576">1024 × 576</option>
@@ -151,7 +153,7 @@ foreach ([
           </div>
         </div>
 
-        <div class="image-edit-controls" data-forge-only hidden>
+        <div class="image-edit-controls">
           <label class="image-mode-toggle" for="img2img-mode">
             <span><?= $escape(LANG['IMG_IMG2IMG']) ?></span>
             <input type="checkbox" id="img2img-mode" role="switch" disabled>

@@ -137,30 +137,52 @@ final class image_ajax
             $mode = $data['mode'] ?? 'txt2img';
             if (
                 !is_string($mode) ||
-                !in_array($mode, ['txt2img', 'img2img'], true) ||
-                ($mode === 'img2img' && $backend !== 'forge')
+                !in_array($mode, ['txt2img', 'img2img'], true)
             ) {
                 throw new \InvalidArgumentException();
             }
 
             if ($mode === 'img2img') {
                 $input = $data['init_image'] ?? null;
-                $denoising = $data['denoising_strength'] ?? null;
-                if (
-                    !is_string($input) || $input === '' ||
-                    (!is_int($denoising) && !is_float($denoising)) ||
-                    !is_finite((float)$denoising) ||
-                    $denoising < 0 || $denoising > 1
-                ) {
+                if (!is_string($input) || $input === '') {
                     throw new \InvalidArgumentException();
                 }
 
-                $request['init_images'] = [
-                    \mara\core\integration\ImageInput::normalize($input),
-                ];
-                $request['denoising_strength'] = (float)$denoising;
-                $request['resize_mode'] = 0;
-                $request['include_init_images'] = false;
+                $input = \mara\core\integration\ImageInput::normalize($input);
+
+                if ($backend === 'qwen2') {
+                    $size = $request['width'] . 'x' . $request['height'];
+                    if (!in_array($size, ['992x992', '1152x864'], true)) {
+                        throw new \InvalidArgumentException();
+                    }
+
+                    $info = getimagesizefromstring(base64_decode($input, true));
+                    if (
+                        $info === false ||
+                        $info[0] !== $request['width'] ||
+                        $info[1] !== $request['height']
+                    ) {
+                        throw new \InvalidArgumentException();
+                    }
+
+                    $request['extra_images'] = [$input];
+                    $request['ref_image_args'] = 'resize_before_vae=false';
+                    $mode = 'txt2img';
+                } else {
+                    $denoising = $data['denoising_strength'] ?? null;
+                    if (
+                        (!is_int($denoising) && !is_float($denoising)) ||
+                        !is_finite((float)$denoising) ||
+                        $denoising < 0 || $denoising > 1
+                    ) {
+                        throw new \InvalidArgumentException();
+                    }
+
+                    $request['init_images'] = [$input];
+                    $request['denoising_strength'] = (float)$denoising;
+                    $request['resize_mode'] = 0;
+                    $request['include_init_images'] = false;
+                }
             }
 
             $userId = (int)User::id();

@@ -118,7 +118,7 @@ server {
     location = /index.php {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php8.4-fpm.sock;
-        fastcgi_read_timeout 600s;
+        fastcgi_read_timeout 630s;
     }
     location ~ \.php\$ { return 404; }
     location ~ /\. { deny all; }

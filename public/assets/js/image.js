@@ -22,11 +22,37 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedImage = '';
   let preparing = false;
   let imageLoadVersion = 0;
+  const normalSizes = [...byId('image_size').options].map(option => ({
+    value: option.value,
+    text: option.text
+  }));
+
+  function updateSizes() {
+    const qwenEdit = backendSelect.value === 'qwen2' &&
+      byId('img2img-mode').checked;
+    const mode = qwenEdit ? 'qwen-edit' : 'normal';
+    const select = byId('image_size');
+    if (select.dataset.sizeMode !== mode) {
+      const previous = select.value;
+      const sizes = qwenEdit
+        ? normalSizes.filter(option =>
+            ['992x992', '1152x864'].includes(option.value))
+        : normalSizes;
+      select.replaceChildren(...sizes.map(option =>
+        new Option(option.text, option.value)));
+      select.value = sizes.some(option => option.value === previous)
+        ? previous : (qwenEdit ? '992x992' : '1024x1024');
+      select.dataset.sizeMode = mode;
+    }
+    const [width, height] = select.value.split('x');
+    byId('width').value = width;
+    byId('height').value = height;
+  }
 
   function updateEditing() {
     const forge = backendSelect.value === 'forge';
-    if (!forge) byId('img2img-mode').checked = false;
-    byId('img2img-mode').disabled = !forge || !optionsReady || generating || preparing;
+    byId('img2img-mode').disabled = !optionsReady || generating || preparing;
+    updateSizes();
     byId('denoising-group').hidden = !forge || !byId('img2img-mode').checked;
     byId('denoising_strength').disabled =
       !forge || !byId('img2img-mode').checked || generating || preparing;
@@ -37,7 +63,13 @@ document.addEventListener('DOMContentLoaded', () => {
       !byId('upscaler_select').value;
   }
 
-  byId('img2img-mode').addEventListener('change', updateEditing);
+  byId('img2img-mode').addEventListener('change', () => {
+    if (backendSelect.value === 'qwen2' && byId('img2img-mode').checked) {
+      byId('steps').value = '40';
+      updateRanges();
+    }
+    updateEditing();
+  });
 
   async function imageDataURL(url) {
     const parsed = new URL(url, location.href);
@@ -63,6 +95,39 @@ document.addEventListener('DOMContentLoaded', () => {
       reader.onerror = () => reject(new Error(texts.IMG_ERROR_IMAGE_INVALID));
       reader.readAsDataURL(blob);
     });
+  }
+
+  async function prepareQwenReference(dataURL, width, height) {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error(texts.IMG_ERROR_IMAGE_INVALID));
+      image.src = dataURL;
+    });
+    if (!image.naturalWidth || !image.naturalHeight ||
+        image.naturalWidth > 8192 || image.naturalHeight > 8192 ||
+        image.naturalWidth * image.naturalHeight > 32000000) {
+      throw new Error(texts.IMG_ERROR_IMAGE_LIMIT);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error(texts.IMG_ERROR_IMAGE_INVALID);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+    const cropWidth = width / scale;
+    const cropHeight = height / scale;
+    context.drawImage(
+      image,
+      (image.naturalWidth - cropWidth) / 2,
+      (image.naturalHeight - cropHeight) / 2,
+      cropWidth, cropHeight,
+      0, 0, width, height
+    );
+    return canvas.toDataURL('image/png');
   }
 
   function clearImage() {
@@ -445,8 +510,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     payload.mode = upscaling ? 'upscale'
-      : payload.backend === 'forge' && byId('img2img-mode').checked
-        ? 'img2img' : 'txt2img';
+      : byId('img2img-mode').checked ? 'img2img' : 'txt2img';
 
     if (upscaling) {
       payload.upscaler = byId('upscaler_select').value;
@@ -466,6 +530,11 @@ document.addEventListener('DOMContentLoaded', () => {
       updateEditing();
       try {
         payload.init_image = await imageDataURL(selectedImage);
+        if (payload.backend === 'qwen2' && payload.mode === 'img2img') {
+          payload.init_image = await prepareQwenReference(
+            payload.init_image, payload.width, payload.height
+          );
+        }
       } catch (error) {
         message(status, error.message || texts.IMG_ERROR_IMAGE_INVALID, true);
         return;

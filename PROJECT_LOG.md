@@ -22,3 +22,25 @@
 - Kép nélküli képből kép generálás és felskálázás nem indítható.
 - Ellenőrizve: törlés megerősítése és megszakítása, képből kép feltöltött és galériaképpel, Lanczos 2× felskálázás.
 - Az AI-felskálázók külön tesztelése még hátravan.
+
+
+### 2026-10-07 — Qwen editing integration and request timeouts
+- Added Qwen reference-image editing through SDAPI txt2img with extra_images and resize_before_vae=false.
+- Initial editing sizes: 992x992 and 1152x864, tested directly against the backend with the INT8 text encoder.
+- Browser prepares the reference with proportional center cropping; editing defaults to 40 steps. Forge retains its denoising control.
+- First MaraImg edit completed on the backend in 547.56 seconds, but Nginx terminated the web request after 300 seconds.
+- Updated the local MaraLab Nginx fastcgi_read_timeout to 630 seconds and the installer template to 630s.
+- Image API cURL timeout: 600 seconds; PHP generation/upscale time limit: 630 seconds.
+- Existing deployments must update their MaraLab Nginx PHP location, run nginx -t, then reload Nginx.
+- PHP-FPM request_terminate_timeout must be disabled or exceed the application request duration.
+- Concurrent llama-server VRAM use caused prefix-cache allocation failure; Qwen retried without caching.
+- MaraImg end-to-end editing verification is still pending after the timeout fix.
+
+### 2026-10-07 — MaraImg Qwen editing verified
+- Confirmed successful reference-image editing and gallery storage from MaraImg.
+- Confirmed successful web operation after increasing the local Nginx timeout.
+- Necklace edit at 20 steps: CFG 1 completed in 82 seconds; CFG 6 in 282 seconds.
+- Both preserved the subject; CFG 6 produced stronger contrast and larger, brighter beads.
+- Further brightness/contrast editing tested successfully by the user.
+- Current editing sizes remain 992x992 and 1152x864; references use proportional center cropping.
+- The UI selects 40 steps when Qwen editing is enabled; the user can adjust this.
