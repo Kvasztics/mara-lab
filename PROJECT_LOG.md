@@ -195,3 +195,10 @@
 - V1 conversion, extra-field round-trip, PNG import and invalid-card checks passed.
 - Updated HU/EN supported-format messages.
 - Character greeting displayed successfully; browser V1 verification follows.
+
+### 2026-10-08 — Character card README documentation
+- Documented V1/V2/V3 JSON/PNG import, export, optional memory and portable parameters.
+- Documented roleplay placeholders, persisted opening messages and separate dialogue examples.
+- Explicitly listed preserved but inactive fields and unsupported CHARX/assets.
+- Added reply regeneration, turn deletion and DRY controls to planned work.
+- Browser legacy V1 import verified successfully.

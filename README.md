@@ -28,6 +28,18 @@ Mara Lab currently supports **Ollama** and **llama.cpp**. Use one or both, choos
 
 A Mara model configuration combines a base model with its prompts, character profile, generation settings, and enabled tools. Multiple characters can therefore explore different behavior using the same base model.
 
+### Character cards and roleplay
+
+Import Tavern **V1, V2 and V3 character cards** as JSON or PNG from the model management page. Imports open in the character editor for review before saving as a new character. Select a local provider and base model; imported cards do not automatically enable tools.
+
+- **Portable export:** download characters as JSON or portrait PNG. New Mara characters export as V2; imported V3 cards retain their format. V1 imports are converted to V2, with extra legacy fields preserved.
+- **Mara settings:** a namespaced extension carries supported generation parameters and the Psyché profile. Psyché memory is excluded by default and can be included explicitly when exporting. Cards without supported parameter extensions use Mara defaults.
+- **Roleplay names:** `{{user}}` resolves to the signed-in user's name; `{{char}}` and `{{assistant}}` resolve to the character's name when building runtime context. Stored card text is preserved.
+- **Opening messages:** starting a new conversation with a card's `first_mes` saves and displays it as a real assistant message, without model generation. Subsequent replies continue that conversation.
+- **Dialogue examples:** `mes_example` is kept separate from the editable Psyché and supplied as illustrative style guidance, not as actual conversation history.
+
+Original card fields and unknown extensions are retained. Lorebooks, alternate greetings and post-history instructions are preserved for export but are not yet used by chat. CHARX archives and additional card assets are not currently supported. This is character-card interoperability, not complete support for every Tavern frontend feature.
+
 ### Built-in and custom tools
 
 | Tool | Purpose |
@@ -99,6 +111,8 @@ Planned work includes:
 - **Vision support:** bringing image-understanding functionality from the earlier Mara application into Mara Lab.
 - **Video understanding:** exploring supported models for viewing and interpreting video content.
 - Additional providers and tools.
+- Regenerating the latest reply and deleting conversation turns.
+- Provider-aware DRY sampling controls to reduce repetitive text.
 - Broader installation testing.
 
 Available capabilities depend on the chosen base model, hardware, and external services. The installer supports new installations; it does not upgrade an existing Mara installation.
