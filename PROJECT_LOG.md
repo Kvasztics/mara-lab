@@ -217,3 +217,14 @@
 - Confirmed DRY support and sampler ordering on the local llama.cpp server.
 - Added four DRY controls with Hungarian and English help text.
 - Changed the DRY token window to a 0–8192 slider with a full-context switch (-1).
+
+## 2026-10-08 — Conversation turn actions
+
+- Added owned-conversation turn lookup and transactional pair deletion.
+- Added replacement of the latest assistant response without duplicating the user message.
+- Reject changes if the conversation changed while regeneration was running.
+- Keep the previous response until a successful replacement is committed.
+- Reused the chat generation pipeline for regeneration without inserting a user message.
+- Added active-conversation ownership checks and localized action messages.
+- Added CSRF-protected POST endpoints and reply action icons.
+- Reused chat busy state and the common confirmation modal for deletion.

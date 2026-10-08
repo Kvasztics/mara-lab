@@ -8,6 +8,47 @@ class chat_ajax
 {
   private Chat $CHAT;
 
+  public function regenerate(): void
+  {
+      $this->turnAction(true);
+  }
+
+  public function deleteturn(): void
+  {
+      $this->turnAction(false);
+  }
+
+  private function turnAction(bool $regenerate): void
+  {
+      User::loggedIn();
+      header('Content-Type: application/json; charset=utf-8');
+      header('Cache-Control: no-store');
+      $token = $_POST['csrf_token'] ?? null;
+      if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' ||
+          strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) !== 'xmlhttprequest' ||
+          !is_string($token) || empty($_SESSION['chat_turn_csrf']) ||
+          !hash_equals($_SESSION['chat_turn_csrf'], $token)) {
+          http_response_code(403);
+          echo json_encode(['success' => false, 'error' => LANG['CHAT_TURN_ERROR']]);
+          return;
+      }
+      try {
+          $id = (int)($_POST['id'] ?? 0);
+          if ($id <= 0) throw new \InvalidArgumentException('Invalid message ID.');
+          $result = $regenerate
+              ? $this->CHAT->regenerate($id, $_POST)
+              : $this->CHAT->deleteTurn($id);
+          if (empty($result['success']) && empty($result['error'])) {
+              $result['error'] = LANG['CHAT_TURN_ERROR'];
+          }
+      } catch (\Throwable $error) {
+          error_log('Mara chat turn action: '.$error->getMessage());
+          http_response_code(500);
+          $result = ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
+      }
+      echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+  }
+
   public function __construct()
     {
       $this->CHAT = new Chat();

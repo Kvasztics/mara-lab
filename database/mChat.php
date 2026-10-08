@@ -15,6 +15,8 @@ use mara\core\User;
 
 class mChat
 {
+  use ChatTurns;
+
   private \mysqli $db;
   private string $table  = 'chat_sessions';
   private string $mtable = 'chat_messages';

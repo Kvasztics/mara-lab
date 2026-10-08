@@ -686,7 +686,7 @@ micButton.addEventListener('click', () =>
   {
     console.log('[STT] Mic button clicked');
     toggleSpeechInput();
-  });        
+  });
       }
 
     const modelList = document.getElementById('model_list');
@@ -803,7 +803,7 @@ async function changeChat(chatId)
               .forEach(function(element)
                 {
                   renderCode(element);
-                });            
+                });
             messages.scrollTop = messages.scrollHeight;
           }
 
@@ -829,7 +829,7 @@ async function changeChat(chatId)
       {
         hideLoader();
       }
-  }  
+  }
 
 let newChatStarting = false;
 
@@ -1241,7 +1241,7 @@ async function sendMessage()
         )
           {
             showMetrics(result.metrics_html);
-          }          
+          }
         /*
          * Text format & syntax
          */
@@ -1535,4 +1535,115 @@ document.addEventListener('DOMContentLoaded', () =>
       {
         testMode.addEventListener('change', updateTestMode);
       }
-  });   
+  });
+
+/* Regenerate the latest reply or delete one user/assistant turn. */
+function refreshTurnActions() {
+    const container = document.getElementById('chat_messages');
+    if (!container) return;
+    const rows = [...container.querySelectorAll('.message-row')];
+    let hasUser = false;
+    const busy = chatSending || attachmentUploading || modelChanging;
+    rows.forEach((row, index) => {
+        if (row.classList.contains('user')) hasUser = true;
+        if (!row.classList.contains('model')) return;
+        const valid = hasUser && Number(row.dataset.messageId) > 0;
+        const retry = row.querySelector('[data-message-action="regenerate"]');
+        const remove = row.querySelector('[data-message-action="delete-turn"]');
+        if (retry) retry.disabled = busy || !valid || index !== rows.length - 1;
+        if (remove) remove.disabled = busy || !valid;
+    });
+}
+
+async function runTurnAction(button, regenerate) {
+    if (chatSending || attachmentUploading || modelChanging || newChatStarting) return;
+    const row = button.closest('.message-row.model');
+    const container = document.getElementById('chat_messages');
+    if (!row || !container || !row.isConnected || button.disabled) return;
+    chatSending = true;
+    attachmentBusy();
+    refreshTurnActions();
+    showLoader();
+    if (regenerate) {
+        setStatus(LANG.STATUS_WORKING);
+        startChatStatus();
+    }
+    try {
+        const data = new FormData();
+        data.append('id', row.dataset.messageId);
+        data.append('csrf_token', button.dataset.csrf || '');
+        data.append('rate_user', document.getElementById('rate_user')?.checked ? '1' : '0');
+        data.append('emotional_ball', document.getElementById('emotional_ball')?.checked ? '1' : '0');
+        const response = await fetch(
+            regenerate ? '/chat_ajax/regenerate' : '/chat_ajax/deleteturn',
+            {
+                method: 'POST', body: data, credentials: 'same-origin',
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            }
+        );
+        const result = await response.json();
+        if (response.status === 401 && result.redirect) {
+            window.location.assign(result.redirect);
+            return;
+        }
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || button.title);
+        }
+        if (regenerate) {
+            if (!result.model_html) throw new Error(button.title);
+            const holder = document.createElement('div');
+            holder.innerHTML = result.model_html;
+            const replacement = holder.querySelector('.message-row.model');
+            if (!replacement) throw new Error(button.title);
+            row.replaceWith(replacement);
+            replacement.querySelectorAll('.model-message-content').forEach(renderCode);
+            if (result.rating_html) showRating(result.rating_html);
+            if (document.getElementById('test_mode')?.checked && result.metrics_html) {
+                showMetrics(result.metrics_html);
+            }
+        } else {
+            container.innerHTML = result.messages || '';
+            container.querySelectorAll('.model-message-content').forEach(renderCode);
+        }
+        if (typeof result.titles === 'string') {
+            const list = document.getElementById('chat_list');
+            if (list) list.innerHTML = result.titles;
+        }
+        refreshEmotionalChart();
+        container.scrollTop = container.scrollHeight;
+    } catch (error) {
+        attachmentFeedback(error.message);
+    } finally {
+        stopChatStatus();
+        setStatus('');
+        hideLoader();
+        chatSending = false;
+        attachmentBusy();
+        refreshTurnActions();
+    }
+}
+
+document.addEventListener('click', function (event) {
+    const button = event.target.closest(
+        '[data-message-action="regenerate"], [data-message-action="delete-turn"]'
+    );
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    if (button.dataset.messageAction === 'regenerate') {
+        runTurnAction(button, true);
+    } else {
+        _confirm(button.dataset.confirm, function () {
+            modalClose('modal_pconfirm');
+            runTurnAction(button, false);
+        });
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('chat_messages');
+    if (!container) return;
+    new MutationObserver(refreshTurnActions).observe(container, {
+        childList: true, subtree: true
+    });
+    refreshTurnActions();
+});

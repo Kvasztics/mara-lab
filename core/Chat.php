@@ -33,6 +33,10 @@ class Chat
  */
   public function __construct()
     {
+      if (session_status() === PHP_SESSION_ACTIVE &&
+          empty($_SESSION['chat_turn_csrf'])) {
+          $_SESSION['chat_turn_csrf'] = bin2hex(random_bytes(32));
+      }
       $this->db    = new mChat();
       $this->MOD   = new Models();
       $this->RAG   = new Rag();
@@ -49,9 +53,55 @@ class Chat
  */
 public function send(array $input): array
   {
+    return $this->processSend($input);
+  }
+
+public function regenerate(int $assistantId, array $input): array
+  {
+    $chatId = (int)($_SESSION['chat_id'] ?? 0);
+    $modelId = (int)($_SESSION['model_id'] ?? 0);
+    $turn = $this->db->assistantTurn($chatId, $modelId, $assistantId);
+    if ($turn === null || !$turn['latest']) {
+        return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR_LATEST']];
+    }
+    $input['message'] = (string)$turn['user']['content'];
+    $input['image_path'] = (string)($turn['user']['image_user'] ?? '');
+    try {
+        return $this->processSend($input, $turn);
+    } finally {
+        Status::clear();
+    }
+  }
+
+public function deleteTurn(int $assistantId): array
+  {
+    $chatId = (int)($_SESSION['chat_id'] ?? 0);
+    $modelId = (int)($_SESSION['model_id'] ?? 0);
+    $turn = $this->db->assistantTurn($chatId, $modelId, $assistantId);
+    if ($turn === null) {
+        return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
+    }
+    $this->db->deleteAssistantTurn($chatId, $modelId, $turn);
+    return [
+        'success' => true,
+        'chat_id' => $chatId,
+        'messages' => $this->change($chatId),
+        'titles' => $this->chat_titles($modelId),
+    ];
+  }
+
+private function processSend(array $input, ?array $regeneration = null): array
+  {
     $modelId = (int)($_SESSION['model_id'] ?? 0);
     $chatId  = (int)($_SESSION['chat_id'] ?? 0);
     $message = trim((string)($input['message'] ?? ''));
+
+    if ($chatId > 0) {
+        $ownedChat = $this->db->getChat($chatId);
+        if ($ownedChat === null || (int)$ownedChat['model_id'] !== $modelId) {
+            return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
+        }
+    }
 
     if ($modelId <= 0 || $message === '')
       {
@@ -79,7 +129,10 @@ public function send(array $input): array
       /*
       * First message.
       */
-      if ($chatId === 0)
+      if ($regeneration !== null)
+        {
+          $messageId = (int)$regeneration['user']['id'];
+        } elseif ($chatId === 0)
         {
           /*
           * Persistent system context.
@@ -168,7 +221,9 @@ public function send(array $input): array
       /*
       * Load conversation history.
       */
-      $history = $this->db->getMessages($chatId);
+      $history = $regeneration !== null
+          ? $regeneration['history']
+          : $this->db->getMessages($chatId);
 
       if (empty($history))
         {
@@ -667,7 +722,7 @@ public function send(array $input): array
             ];
           }
 
-        if (is_array($rating))
+        if ($regeneration === null && is_array($rating))
           {
             $this->db->saveUserRating(
                 $messageId,
@@ -700,23 +755,29 @@ public function send(array $input): array
             $contextTrimmed = true;
           }
 
-        $this->db->saveContextState(
-            $chatId,
-            $promptEvalCount,
-            $contextTrimmed
-        );
+        if ($regeneration === null) {
+            $this->db->saveContextState(
+                $chatId,
+                $promptEvalCount,
+                $contextTrimmed
+            );
+        }
 
 
-        $messageId = $this->db->saveMessage(
-            $chatId,
-            'assistant',
-            $content,
-            [
-              'metrics' => $metrics,
-              'image_generated' => $generatedImage,
-              'image_prompt'    => $generatedPrompt               
-            ]
-        );
+        $assistantData = [
+            'metrics' => $metrics,
+            'image_generated' => $generatedImage,
+            'image_prompt' => $generatedPrompt,
+        ];
+        $messageId = $regeneration !== null
+            ? $this->db->replaceAssistantTurn(
+                $chatId, $modelId, $regeneration, $content, $assistantData,
+                is_array($rating) ? $rating : null,
+                $promptEvalCount, $contextTrimmed
+            )
+            : $this->db->saveMessage(
+                $chatId, 'assistant', $content, $assistantData
+            );
 
         $metricsHtml = $this->renderMetrics($metrics, $model);
 
@@ -749,7 +810,9 @@ public function send(array $input): array
     return [
       'success'      => true,
       'chat_id'      => $chatId,
-      'user_html'    => $userHtml,
+      'user_html'    => $regeneration === null ? $userHtml : '',
+      'regenerated'  => $regeneration !== null,
+      'message_id'   => $messageId,
       'model_html'   => $modelHtml,
       'voice_text'   => VoiceText::clean($content),
       'rating_html'  => $ratingHtml,
