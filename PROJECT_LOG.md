@@ -202,3 +202,9 @@
 - Explicitly listed preserved but inactive fields and unsupported CHARX/assets.
 - Added reply regeneration, turn deletion and DRY controls to planned work.
 - Browser legacy V1 import verified successfully.
+
+## 2026-10-08 — Noncommercial license
+
+- Added the official PolyForm Noncommercial 1.0.0 license and copyright notice.
+- Documented noncommercial use and separate permission for commercial use.
+- Clarified that third-party components retain their own licenses.

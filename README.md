@@ -124,3 +124,16 @@ Mara Lab uses PHP, JavaScript, and MariaDB. Application code lives in `core/`, d
 Runtime settings are stored in the database. The supported provider allowlist and database credentials are configured in `config/config.php`; [config/config_example.php](config/config_example.php) provides a template for manual configuration. The installer generates the real configuration automatically.
 
 Ideas for experiments, new tools, and reproducible bug reports are welcome through [GitHub Issues](https://github.com/Kvasztics/mara-lab/issues). When reporting unexpected behavior, include the provider, base model, relevant settings, and reproduction steps.
+
+## License
+
+Mara Lab's original code is licensed under the
+[PolyForm Noncommercial License 1.0.0](LICENSE).
+
+Noncommercial use, modification and redistribution are permitted under its
+terms. Commercial use requires separate permission from the copyright holder.
+The license also permits use by the organizations listed in its
+“Noncommercial Organizations” section.
+
+Mara Lab is source-available. Third-party components, models and assets remain
+subject to their own licenses. See [NOTICE](NOTICE) for attribution.
