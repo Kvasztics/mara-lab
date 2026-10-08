@@ -373,3 +373,45 @@ button:disabled { cursor: wait; opacity: .6; }
 .image-upscale-controls { margin-top: 24px; }
 .btn-upscale { margin-top: 0; background: #57596c; }
 .btn-upscale:hover { background: #414353; }
+
+/* Image metadata dialog */
+.gallery-card { position: relative; }
+
+.image-info {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #007bff;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+}
+.image-info:hover { background: #0759ad; }
+
+.image-info-modal .modal-content { width: min(720px, 100%); }
+.image-info-modal h2 { margin: 0 28px 18px 0; font-size: 22px; }
+.image-info-modal h3 { margin: 16px 0 8px; font-size: 14px; }
+.image-info-modal pre {
+  margin: 0 0 16px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #f3f5f8;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.image-info-modal pre:empty { display: none; }
+.image-info-modal .error { color: #b42318; }
+.image-info-modal button:disabled { opacity: .5; cursor: default; }

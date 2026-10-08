@@ -24,7 +24,21 @@ public static function loggedIn(): bool
   {
     if (empty($_SESSION['user']['id']))
       {
-        if (self::isAjax())
+        $path = parse_url(
+            (string)($_SERVER['REQUEST_URI'] ?? ''),
+            PHP_URL_PATH
+        );
+        $imageRequest = is_string($path)
+            && preg_match('~^/(image|image_ajax)(/|$)~', $path) === 1;
+
+        $_SESSION['login_return'] = $imageRequest
+            ? '/image'
+            : '/main/view';
+
+        $imageAjax = is_string($path)
+            && preg_match('~^/image_ajax(/|$)~', $path) === 1;
+
+        if (self::isAjax() || $imageAjax)
           {
             header('Content-Type: application/json; charset=utf-8');
 

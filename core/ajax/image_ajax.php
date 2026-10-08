@@ -464,6 +464,64 @@ final class image_ajax
         }
     }
 
+    public function imageinfo(array $vars = []): void
+    {
+        User::loggedIn();
+        header('Content-Type: application/json; charset=utf-8');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+            http_response_code(405);
+            header('Allow: GET');
+            $this->reply(['success' => false, 'error' => LANG['IMG_ERROR_REQUEST']]);
+            return;
+        }
+
+        $name = $_GET['name'] ?? null;
+        $userId = (int)User::id();
+        if (
+            $userId <= 0 ||
+            !is_string($name) ||
+            !preg_match('/^gen_\d{8}_\d{6}_[a-f0-9]{16}\.(png|jpg|webp)$/D', $name)
+        ) {
+            http_response_code(400);
+            $this->reply(['success' => false, 'error' => LANG['IMG_ERROR_PARAMS']]);
+            return;
+        }
+
+        $directory = DIR_ROOT . '/public/genimages/user_' . $userId;
+        $file = $directory . '/' . $name;
+        $realDirectory = realpath($directory);
+        $realFile = realpath($file);
+
+        if (
+            is_link($directory) ||
+            is_link($file) ||
+            $realDirectory === false ||
+            $realFile === false ||
+            dirname($realFile) !== $realDirectory ||
+            !is_file($realFile)
+        ) {
+            http_response_code(404);
+            $this->reply(['success' => false, 'error' => LANG['IMG_ERROR_INFO']]);
+            return;
+        }
+
+        session_write_close();
+
+        try {
+            $metadata = \mara\core\integration\ImageMetadata::read($realFile);
+            $this->reply([
+                'success' => true,
+                'name' => $name,
+                'metadata' => $metadata,
+            ]);
+        } catch (\Throwable $error) {
+            error_log('MaraImg metadata: ' . $error->getMessage());
+            http_response_code(500);
+            $this->reply(['success' => false, 'error' => LANG['IMG_ERROR_INFO']]);
+        }
+    }
+
     public function gallery(array $vars = []): void
     {
         User::loggedIn();

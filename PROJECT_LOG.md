@@ -44,3 +44,24 @@
 - Further brightness/contrast editing tested successfully by the user.
 - Current editing sizes remain 992x992 and 1152x864; references use proportional center cropping.
 - The UI selects 40 steps when Qwen editing is enabled; the user can adjust this.
+
+
+### 2026-10-08 — MaraImg login return verified
+- Unauthenticated image page and image AJAX requests store /image as the login return destination.
+- Successful login uses an allowlisted return path.
+- MaraImg sends the AJAX header and redirects HTTP 401 responses to login without displaying a generation error.
+- Verified by logging out in another tab, refreshing the gallery, and logging back in: returned to MaraImg.
+- Removed automatic switching to the generation tab when selecting a gallery image; verification pending.
+
+### 2026-10-08 — MaraImg image details
+- Verified gallery image selection stays on the gallery tab.
+- Added Hungarian and English labels for image metadata and prompt reuse; implementation in progress.
+
+### 2026-10-08 — MaraImg image metadata verified
+- Added an authenticated metadata endpoint restricted to the user's own gallery images.
+- Added a bounded PNG metadata reader supporting tEXt, zTXt and iTXt.
+- Gallery info buttons open a dialog using the shared modal styles and HU/EN labels.
+- Prompts and generation settings are displayed as text.
+- “Use prompt” restores positive and negative prompts and opens the generation tab.
+- Existing generation settings and image files remain unchanged.
+- PHP syntax checks passed; metadata reading, dialog display and prompt reuse verified.

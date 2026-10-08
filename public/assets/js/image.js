@@ -218,8 +218,16 @@ document.addEventListener('DOMContentLoaded', () => {
   async function request(path, options = {}) {
     const response = await fetch(api + path, {
       credentials: 'same-origin',
-      ...options
+      ...options,
+      headers: {
+        ...options.headers,
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     });
+    if (response.status === 401) {
+      window.location.assign('/auth/login');
+      return new Promise(() => {});
+    }
     let data;
     try {
       data = await response.json();
@@ -339,18 +347,76 @@ document.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', () => {
       if (generating || preparing) return;
       showImage(url);
-      if (className === 'gallery-image') {
-        document.querySelector('[data-tab="generate"]').click();
-      }
     });
     return button;
   }
+
+  let imageInfoSequence = 0;
+  let currentImageMetadata = null;
+
+  async function showImageInfo(name) {
+    const sequence = ++imageInfoSequence;
+    currentImageMetadata = null;
+    const target = byId('image-info-status');
+    byId('image-info-details').hidden = true;
+    byId('image-info-use').disabled = true;
+    message(target, texts.IMG_INFO_LOADING);
+    modalOpen('modal_imageinfo');
+
+    try {
+      const data = await request('/imageinfo?name=' + encodeURIComponent(name));
+      if (sequence !== imageInfoSequence) return;
+      const metadata = data.metadata;
+      if (!metadata || typeof metadata.parameters !== 'string'
+          || !metadata.parameters.trim()) {
+        message(target, texts.IMG_INFO_EMPTY);
+        return;
+      }
+
+      currentImageMetadata = metadata;
+      byId('image-info-positive').textContent = metadata.positive_prompt || '';
+      byId('image-info-negative').textContent = metadata.negative_prompt || '';
+      byId('image-info-settings').textContent =
+        metadata.settings || metadata.parameters;
+      byId('image-info-details').hidden = false;
+      byId('image-info-use').disabled =
+        generating || preparing || !metadata.positive_prompt;
+      message(target, '');
+    } catch (error) {
+      if (sequence !== imageInfoSequence) return;
+      message(target, texts.IMG_ERROR_INFO, true);
+    }
+  }
+
+  byId('image-info-use').addEventListener('click', () => {
+    if (generating || preparing || !currentImageMetadata
+        || !currentImageMetadata.positive_prompt) return;
+    byId('prompt').value = currentImageMetadata.positive_prompt;
+    byId('negative_prompt').value = currentImageMetadata.negative_prompt || '';
+    rememberProfile();
+    modalClose('modal_imageinfo');
+    document.querySelector('[data-tab="generate"]').click();
+    byId('prompt').focus();
+  });
 
   function galleryCard(item) {
     const card = document.createElement('div');
     card.className = 'gallery-card';
     card.dataset.imageUrl = item.image;
     card.append(imageButton(item.image, item.name, 'gallery-image'));
+
+    const info = document.createElement('button');
+    info.type = 'button';
+    info.className = 'image-info';
+    info.textContent = 'ⓘ';
+    info.title = texts.IMG_INFO;
+    info.setAttribute('aria-label', texts.IMG_INFO);
+    info.addEventListener('click', event => {
+      event.stopPropagation();
+      showImageInfo(item.name);
+    });
+    card.append(info);
+
 
     const remove = document.createElement('button');
     remove.type = 'button';

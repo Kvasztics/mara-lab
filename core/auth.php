@@ -64,7 +64,14 @@ public function dologin(): void
         exit;
       }
 
-    header('Location: '.DIR_HOST.'/main/view');
+    $returnPath = $_SESSION['login_return'] ?? '/main/view';
+    unset($_SESSION['login_return']);
+
+    if (!in_array($returnPath, ['/image', '/main/view'], true)) {
+        $returnPath = '/main/view';
+    }
+
+    header('Location: '.DIR_HOST.$returnPath);
     exit;
   }
 /**

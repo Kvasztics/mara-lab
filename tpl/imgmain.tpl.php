@@ -4,6 +4,12 @@ $escape = static fn(string $value): string =>
 
 $imageTexts = [];
 foreach ([
+    'IMG_INFO', 'IMG_INFO_LOADING', 'IMG_INFO_EMPTY',
+    'IMG_ERROR_INFO', 'IMG_USE_PROMPT', 'IMG_INFO_PARAMETERS',
+] as $key) {
+    $imageTexts[$key] = LANG[$key];
+}
+foreach ([
     'IMG_BUSY', 'IMG_ERROR_REQUEST', 'IMG_ERROR_PROMPT',
     'IMG_ERROR_PARAMS', 'IMG_ERROR_CAPABILITIES',
     'IMG_GALLERY_EMPTY', 'IMG_READY', 'IMG_SECONDS',
@@ -252,5 +258,35 @@ foreach ([
   </section>
 </main>
 <?php require DIR_TPL . '/modals.tpl.php'; ?>
+
+<div id="modal_imageinfo" class="modal common-modal image-info-modal"
+     role="dialog" aria-modal="true" aria-labelledby="image-info-title">
+  <div class="modal-content">
+    <button type="button" class="close"
+            aria-label="<?= $escape(LANG['MODAL_CLOSE']) ?>"
+            onclick="modalClose('modal_imageinfo');">&times;</button>
+    <div class="content">
+      <h2 id="image-info-title"><?= $escape(LANG['IMG_INFO']) ?></h2>
+      <p id="image-info-status" role="status" aria-live="polite"></p>
+      <div id="image-info-details" hidden>
+        <h3><?= $escape(LANG['IMG_POS_PROMPT']) ?></h3>
+        <pre id="image-info-positive"></pre>
+        <h3><?= $escape(LANG['IMG_NEG_PROMPT']) ?></h3>
+        <pre id="image-info-negative"></pre>
+        <h3><?= $escape(LANG['IMG_INFO_PARAMETERS']) ?></h3>
+        <pre id="image-info-settings"></pre>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="image-info-use" disabled>
+          <?= $escape(LANG['IMG_USE_PROMPT']) ?>
+        </button>
+        <button type="button" onclick="modalClose('modal_imageinfo');">
+          <?= $escape(LANG['MODAL_CLOSE']) ?>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
