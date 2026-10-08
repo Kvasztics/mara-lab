@@ -75,6 +75,25 @@ Create and edit knowledge sources, assign them to models, and configure retrieva
 
 Voice features require the corresponding dependencies, services, and models where applicable. Browser microphone access also depends on browser support, permissions, and a suitable secure connection.
 
+### Conversation editing
+
+- **Regenerate the latest response:** request a new answer without duplicating
+  your user message. The previous response remains saved if generation fails.
+- **Delete a message pair:** remove a response and its corresponding user
+  message after confirmation. Later messages remain in the conversation.
+
+Imported opening greetings have no corresponding user message and are excluded
+from these actions.
+
+### Repetition control with DRY
+
+For llama.cpp characters, configure DRY strength, penalty growth, allowed
+repetition length and the token window, including a full-context option.
+DRY penalizes repeated token sequences and is disabled by default.
+
+DRY settings are preserved in the Mara Lab character-card extension.
+They are not applied to Ollama requests.
+
 ### Interface
 
 English and Hungarian UI translations, character portraits, conversation management, and personal or public model configurations.
@@ -111,8 +130,6 @@ Planned work includes:
 - **Vision support:** bringing image-understanding functionality from the earlier Mara application into Mara Lab.
 - **Video understanding:** exploring supported models for viewing and interpreting video content.
 - Additional providers and tools.
-- Regenerating the latest reply and deleting conversation turns.
-- Provider-aware DRY sampling controls to reduce repetitive text.
 - Broader installation testing.
 
 Available capabilities depend on the chosen base model, hardware, and external services. The installer supports new installations; it does not upgrade an existing Mara installation.

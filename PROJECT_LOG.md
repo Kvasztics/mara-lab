@@ -228,3 +228,4 @@
 - Added active-conversation ownership checks and localized action messages.
 - Added CSRF-protected POST endpoints and reply action icons.
 - Reused chat busy state and the common confirmation modal for deletion.
+- Updated README with completed reply regeneration, pair deletion and llama.cpp DRY controls.
