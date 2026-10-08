@@ -94,6 +94,15 @@ DRY penalizes repeated token sequences and is disabled by default.
 DRY settings are preserved in the Mara Lab character-card extension.
 They are not applied to Ollama requests.
 
+### Image understanding
+
+Upload an image in chat and discuss it with a vision-capable model.
+Both the Ollama and llama.cpp integrations support image inputs.
+For llama.cpp, configure the matching multimodal projector when required
+by the selected model.
+
+Image understanding depends on the selected model's capabilities.
+
 ### Interface
 
 English and Hungarian UI translations, character portraits, conversation management, and personal or public model configurations.
@@ -127,7 +136,6 @@ A fresh Mara application and database have been tested on a Raspberry Pi 4 with 
 
 Planned work includes:
 
-- **Vision support:** bringing image-understanding functionality from the earlier Mara application into Mara Lab.
 - **Video understanding:** exploring supported models for viewing and interpreting video content.
 - Additional providers and tools.
 - Broader installation testing.
