@@ -78,3 +78,11 @@
 - Updated README installer language and planned work.
 - Individual Bash syntax checks and setup.php PHP syntax check passed.
 - Translation changes have not yet been tested with a fresh installation.
+
+### 2026-10-08 — Image search verification
+- Direct SearXNG test returned five image results.
+- Excluded devicons and lucide icon engines.
+- Fixed missing STATUS_SEARCHIMAGES labels in both language files; missing labels had prevented tool execution.
+- Chat test with Aslaug successfully returned an organized image-link and source list.
+- Added search_images to the README tool list.
+- An unexpected workstation restart was investigated separately: boot logs contained CPU Machine Check hardware errors; cause remains unresolved.

@@ -33,6 +33,7 @@ A Mara model configuration combines a base model with its prompts, character pro
 | Tool | Purpose |
 | --- | --- |
 | `search_web` | Search through a configured web-search service. |
+| `search_images` | Find existing images through SearXNG, returning image URLs, thumbnails and source page links. |
 | `visit_webpage` | Retrieve web-page content for the model. |
 | `generate_image` | Generate images through a configured image backend, retaining the prompts for later inspection. |
 | `rate_user` | Record the model's assessment of the user's interaction. |
