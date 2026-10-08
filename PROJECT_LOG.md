@@ -208,3 +208,12 @@
 - Added the official PolyForm Noncommercial 1.0.0 license and copyright notice.
 - Documented noncommercial use and separate permission for commercial use.
 - Clarified that third-party components retain their own licenses.
+
+## 2026-10-08 — DRY sampling: parameter storage
+
+- Added bounded per-character DRY settings, disabled by default.
+- Included DRY settings in the Mara character-card extension.
+- Removed DRY options from requests to Ollama.
+- Confirmed DRY support and sampler ordering on the local llama.cpp server.
+- Added four DRY controls with Hungarian and English help text.
+- Changed the DRY token window to a 0–8192 slider with a full-context switch (-1).

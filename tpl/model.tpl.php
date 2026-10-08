@@ -657,6 +657,59 @@
             </div>
 
 
+            <!-- DRY: llama.cpp -->
+            <?php foreach ([
+                ['dry_multiplier', 'MULTIPLIER', 0, 5, 0.05, 0],
+                ['dry_base', 'BASE', 1, 4, 0.05, 1.75],
+                ['dry_allowed_length', 'LENGTH', 0, 20, 1, 2],
+            ] as [$dryKey, $dryLabel, $dryMin, $dryMax, $dryStep, $dryDefault]): ?>
+                <div class="parameter-item range-group">
+                    <div class="parameter-header">
+                        <div>
+                            <label for="param-<?= $dryKey ?>">
+                                <?= LANG['MODEL_DRY_' . $dryLabel] ?>
+                            </label>
+                            <span class="parameter-help">
+                                <?= LANG['MODEL_DRY_' . $dryLabel . '_HELP'] ?>
+                            </span>
+                        </div>
+                        <input type="number" class="range-number"
+                               aria-label="<?= htmlspecialchars(LANG['MODEL_DRY_' . $dryLabel], ENT_QUOTES, 'UTF-8') ?>"
+                               min="<?= $dryMin ?>" max="<?= $dryMax ?>" step="<?= $dryStep ?>"
+                               value="<?= htmlspecialchars((string)($parameters[$dryKey] ?? $dryDefault), ENT_QUOTES, 'UTF-8') ?>">
+                    </div>
+                    <input type="range" id="param-<?= $dryKey ?>" name="<?= $dryKey ?>"
+                           min="<?= $dryMin ?>" max="<?= $dryMax ?>" step="<?= $dryStep ?>"
+                           value="<?= htmlspecialchars((string)($parameters[$dryKey] ?? $dryDefault), ENT_QUOTES, 'UTF-8') ?>">
+                </div>
+            <?php endforeach; ?>
+
+            <?php
+                $dryWindow = (int)($parameters['dry_penalty_last_n'] ?? 64);
+                $drySlider = $dryWindow === -1 ? 64 : max(0, min(8192, $dryWindow));
+            ?>
+            <div class="parameter-item range-group">
+                <div class="parameter-header">
+                    <div>
+                        <label for="param-dry-last-n"><?= LANG['MODEL_DRY_LAST_N'] ?></label>
+                        <span class="parameter-help"><?= LANG['MODEL_DRY_LAST_N_HELP'] ?></span>
+                    </div>
+                    <input type="number" class="range-number" id="number-dry-last-n"
+                           aria-label="<?= htmlspecialchars(LANG['MODEL_DRY_LAST_N'], ENT_QUOTES, 'UTF-8') ?>"
+                           min="0" max="8192" step="64" value="<?= $drySlider ?>">
+                </div>
+                <input type="range" id="param-dry-last-n" name="dry_penalty_last_n"
+                       min="0" max="8192" step="64" value="<?= $drySlider ?>">
+                <div class="parameter-option">
+                    <label class="switch">
+                        <input type="checkbox" id="dry-last-auto" name="dry_last_auto"
+                               value="1" <?= $dryWindow === -1 ? 'checked' : '' ?>>
+                        <span class="switch-slider"></span>
+                    </label>
+                    <span><?= LANG['MODEL_PARAM_FULL_CONTEXT'] ?></span>
+                </div>
+            </div>
+
             <!-- TOP P -->
 
             <div class="parameter-item range-group">
@@ -1338,3 +1391,19 @@
 
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const automatic = document.getElementById('dry-last-auto');
+    const range = document.getElementById('param-dry-last-n');
+    const number = document.getElementById('number-dry-last-n');
+    if (!automatic || !range || !number) return;
+    function updateDryWindow() {
+        range.disabled = automatic.checked;
+        number.disabled = automatic.checked;
+        range.closest('.parameter-item').classList.toggle('is-auto', automatic.checked);
+    }
+    automatic.addEventListener('change', updateDryWindow);
+    updateDryWindow();
+});
+</script>

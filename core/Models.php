@@ -334,7 +334,20 @@ public function save(array $input, ?string $cardData = null): int|false
     /*
      * Parameters
      */
+    // DRY settings are stored per character; zero multiplier disables DRY.
+    $dryNumber = static function (string $key, float $default, float $min, float $max) use ($input): float {
+        $value = $input[$key] ?? $default;
+        if (!is_scalar($value) || !is_numeric($value) || !is_finite((float)$value)) {
+            return $default;
+        }
+        return max($min, min($max, (float)$value));
+    };
+
     $parameters = [
+      'dry_multiplier'     => $dryNumber('dry_multiplier', 0.0, 0.0, 5.0),
+      'dry_base'           => $dryNumber('dry_base', 1.75, 1.0, 4.0),
+      'dry_allowed_length' => (int)$dryNumber('dry_allowed_length', 2, 0, 20),
+      'dry_penalty_last_n' => isset($input['dry_last_auto']) ? -1 : (int)$dryNumber('dry_penalty_last_n', 64, 0, 8192),
       'think'             => isset($input['param_think']),
       'temperature'       => (float)($input['temperature'] ?? 0.7),
       'frequency_penalty' => (float)($input['frequency_penalty'] ?? 0),

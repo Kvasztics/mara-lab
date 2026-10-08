@@ -195,6 +195,12 @@ public function chat(
         $payload['tools'] = $tools;
       }
 
+    // DRY is a llama.cpp sampling feature; do not send it to Ollama.
+    foreach (['dry_multiplier', 'dry_base', 'dry_allowed_length',
+              'dry_penalty_last_n', 'dry_sequence_breakers'] as $key) {
+        unset($options[$key]);
+    }
+
     if (!empty($options))
       {
         $payload['options'] = $options;
