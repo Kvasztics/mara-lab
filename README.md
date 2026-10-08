@@ -2,6 +2,8 @@
 
 **A local AI playground for roleplay, persistent character memory, and exploring model behavior.**
 
+![Mara Lab — character chat with Emotional Ball and user interaction ratings](docs/screenshots/maralab-chat-demo.png)
+
 Mara Lab is an experimental environment for exploring how AI models respond when given distinct roles, traits, and a configurable **Psyché**—a character profile with personality, persistent memories, and a recorded reason for each revision. It was created to observe their behavior, reactions, and capabilities in depth, and to explore how these change with different configurations and interactions.
 
 Roleplay is both a creative use case and a way to explore model behavior. Build characters, place them in different scenarios, and observe how their responses, role consistency, and persistent memories evolve across conversations.
