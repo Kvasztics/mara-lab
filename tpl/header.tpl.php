@@ -65,7 +65,7 @@
           <nav class="sidebar-nav sidebar-navigation">
             <a
               href=""
-              onclick="newChat();"
+              onclick="newChat(); return false;"
               class="menu-link">
               <?= $this->icon('new-chat') ?>
               <span><?php echo LANG['NEW_CHAT']; ?></span>

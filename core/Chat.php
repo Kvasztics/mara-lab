@@ -84,17 +84,8 @@ public function send(array $input): array
           /*
           * Persistent system context.
           */
-          $systemPrompt = trim((string)($model['prompt'] ?? ''));
-
-          if (
-              !empty($model['psyche']) &&
-              !empty($model['psyche_data']['prompt'])
-          )
-            {
-              $systemPrompt .= "\n\n".trim(
-                  (string)$model['psyche_data']['prompt']
-              );
-            }
+          $systemPrompt =
+              \mara\core\integration\CharacterCardContext::systemPrompt($model);
 
           /*
           * Create conversation:
@@ -290,6 +281,26 @@ public function send(array $input): array
       * Runtime context enrichment:
       * RAG.
       */
+      /*
+       * Resolve roleplay names and add illustrative dialogue examples.
+       * Persisted messages and actual conversational turns remain unchanged.
+       */
+      foreach ($messages as &$historyMessage)
+        {
+          if (
+              ($historyMessage['role'] ?? '') === 'system' &&
+              is_string($historyMessage['content'] ?? null)
+          )
+            {
+              $historyMessage['content'] =
+                  \mara\core\integration\CharacterCardContext::runtimeSystem(
+                      $historyMessage['content'],
+                      $model
+                  );
+            }
+        }
+      unset($historyMessage);
+
       $ragResults = [];
       if (
           !empty($model['rag']) &&
@@ -852,6 +863,57 @@ public function delete(int $chatId): bool
  * @access public
  * @return void
  */
+public function start(): array
+  {
+    $modelId = (int)($_SESSION['model_id'] ?? 0);
+    $model = $modelId > 0 ? $this->MOD->getById($modelId) : null;
+
+    if (
+        $model === null ||
+        (!User::isAdmin() && (int)$model['user_id'] !== 0 &&
+            (int)$model['user_id'] !== User::id())
+    ) {
+        return ['success' => false, 'error' => LANG['MSG_NO_MODEL']];
+    }
+
+    try
+      {
+        $greeting = \mara\core\integration\CharacterCardContext::greeting($model);
+        if ($greeting === '') {
+            $this->new();
+            return [
+                'success' => true,
+                'chat_id' => 0,
+                'messages' => '',
+                'titles' => $this->chat_titles($modelId),
+            ];
+        }
+
+        $conversation = $this->db->createGreetingConversation(
+            $modelId,
+            mb_substr((string)$model['name'], 0, 80),
+            \mara\core\integration\CharacterCardContext::systemPrompt($model),
+            $greeting
+        );
+        $chatId = (int)($conversation['chat_id'] ?? 0);
+        if ($chatId <= 0) {
+            throw new \RuntimeException('Character greeting conversation was not saved.');
+        }
+
+        return [
+            'success' => true,
+            'chat_id' => $chatId,
+            'messages' => $this->change($chatId),
+            'titles' => $this->chat_titles($modelId),
+        ];
+      }
+    catch (\Throwable $error)
+      {
+        error_log('Mara new character chat: ' . $error->getMessage());
+        return ['success' => false, 'error' => LANG['CHAT_ERROR_START']];
+      }
+  }
+
 public function new(): void
   {
     $_SESSION['chat_id'] = 0;

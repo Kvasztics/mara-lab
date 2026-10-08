@@ -31,6 +31,7 @@ class main
   private Chat     $CHAT;
 
   use \mara\core\Render;
+  use \mara\core\CharacterCards;
 /**
  * Construct
  * @access public
@@ -207,6 +208,7 @@ public function models($var = []): void
     User::loggedIn();
     $modelId = (int)($var[0] ?? 0);
     $pagedata['lang']   = App::get('system.language');
+    $pagedata['card_csrf_token'] = $this->characterCardCsrf();
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
@@ -248,6 +250,8 @@ public function newmodel($var = []): void
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
+    $pagedata = array_merge($pagedata, $this->characterCardDraft((array)$var));
+    $pagedata['card_csrf_token'] = $this->characterCardCsrf();
     $pagedata['voiceselect'] = $this->VOC->selectVoices(0);
     $pagedata['ragdocuments'] = $this->RAG->getDocuments();
     $pagedata['modelimages'] = $this->gallery();
@@ -268,7 +272,7 @@ public function savemodel(): void
   {
     User::loggedIn();
 
-    $modelId = $this->MOD->save($_POST);
+    $modelId = $this->saveCharacterCardModel($_POST);
 
     if ($modelId !== false)
       {

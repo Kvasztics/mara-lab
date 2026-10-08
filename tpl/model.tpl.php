@@ -50,6 +50,17 @@
 
         <form class="model-editor-form" method="post" action="<?php echo DIR_HOST; ?>/main/savemodel">
 
+            <?php if (!empty($card_import_token)): ?>
+                <input type="hidden" name="card_import_token"
+                       value="<?= htmlspecialchars($card_import_token, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="card_csrf_token"
+                       value="<?= htmlspecialchars($card_csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+                <p class="character-card-notice">
+                    <?= htmlspecialchars(LANG['CARD_IMPORT_NOTICE'], ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            <?php endif; ?>
+
+
             <input type="hidden" name="id" value="<?php echo (int)($id ?? 0); ?>">
             <input type="hidden" name="image_path" id="hidden-image-input" value="<?php echo $image; ?>">
             <input
@@ -474,7 +485,10 @@
                     id="psyche-prompt"
                     name="psyche_prompt"
                     rows="10"
-                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_PROMPT_PLACEHOLDER']); ?>"><?php echo htmlspecialchars($psyche_data['prompt'] ?? ''); ?></textarea>
+                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_PROMPT_PLACEHOLDER']); ?>"><?php echo htmlspecialchars(\mara\core\integration\CharacterCardContext::profilePrompt([
+                        'psyche_data' => $psyche_data ?? [],
+                        'card_data' => $card_data ?? null
+                    ]), ENT_QUOTES, 'UTF-8'); ?></textarea>
 
             </div>
 

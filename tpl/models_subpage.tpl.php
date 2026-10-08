@@ -64,6 +64,17 @@
               </div>
           </div>
         </a>
+        <button type="button" class="model-export-btn"
+          data-character-export="<?= htmlspecialchars(
+              DIR_HOST . '/main/exportcard/' . (int)$id, ENT_QUOTES, 'UTF-8'
+          ) ?>"
+          title="<?= htmlspecialchars(LANG['CARD_EXPORT'], ENT_QUOTES, 'UTF-8') ?>"
+          aria-label="<?= htmlspecialchars(LANG['CARD_EXPORT'], ENT_QUOTES, 'UTF-8') ?>">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/>
+          </svg>
+        </button>
         <button
           type="button"
           class="model-delete-btn"

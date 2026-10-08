@@ -131,15 +131,22 @@ public function image(): void
 public function newchat(): void
   {
     User::loggedIn();
-
     header('Content-Type: application/json; charset=utf-8');
 
-    $this->CHAT->new();
+    if (
+        ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' ||
+        strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''))
+            !== 'xmlhttprequest'
+    ) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => LANG['CHAT_ERROR_START']]);
+        return;
+    }
 
-    echo json_encode([
-      'success' => true,
-      'chat_id' => 0
-    ]);
+    echo json_encode(
+        $this->CHAT->start(),
+        JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
+    );
   }
 /**
  * Change chat

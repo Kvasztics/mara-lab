@@ -309,7 +309,7 @@ private function normalize(?array $model): ?array
  * @param array $input
  * @return int|false Saved model ID, or false on failure
  */
-public function save(array $input): int|false
+public function save(array $input, ?string $cardData = null): int|false
   {
     $modelId = (int)($input['id'] ?? 0);
     $isNew   = $modelId <= 0;
@@ -395,6 +395,7 @@ public function save(array $input): int|false
     )));
 
     $data = [
+      'card_data'      => $isNew ? $cardData : null,
       'provider'       => trim((string)($input['provider'] ?? '')),
       'basemodel'      => trim((string)($input['basemodel'] ?? '')),
       'mmproj'         => trim((string)($input['mmproj'] ?? '')),

@@ -161,7 +161,9 @@ public function createChat(int $modelId, string $name): int
         $name
     );
 
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        return 0;
+    }
 
     return (int)$this->db->insert_id;
   }
@@ -227,7 +229,9 @@ public function saveMessage(
         $metrics
     );
 
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        return 0;
+    }
 
     return (int)$this->db->insert_id;
   }
@@ -322,7 +326,44 @@ public function getUserRating(int $messageId): ?array
  * @param array $userData
  * @return int
  */
-  public function createConversation(
+  public function createGreetingConversation(
+    int $modelId,
+    string $name,
+    string $systemPrompt,
+    string $greeting
+): array
+  {
+    try
+      {
+        if (!$this->db->begin_transaction()) {
+            throw new \RuntimeException('Cannot begin greeting transaction.');
+        }
+
+        $chatId = $this->createChat($modelId, $name);
+        if ($chatId <= 0) {
+            throw new \RuntimeException('Cannot create greeting conversation.');
+        }
+
+        $systemId = $this->saveMessage($chatId, 'system', $systemPrompt);
+        $greetingId = $this->saveMessage($chatId, 'assistant', $greeting);
+        if ($systemId <= 0 || $greetingId <= 0) {
+            throw new \RuntimeException('Cannot save character greeting.');
+        }
+
+        if (!$this->db->commit()) {
+            throw new \RuntimeException('Cannot commit greeting conversation.');
+        }
+        return ['chat_id' => $chatId, 'message_id' => $greetingId];
+      }
+    catch (\Throwable $error)
+      {
+        $this->db->rollback();
+        error_log('Mara character greeting: ' . $error->getMessage());
+        return ['chat_id' => 0, 'message_id' => 0];
+      }
+  }
+
+public function createConversation(
     int $modelId,
     string $name,
     string $systemPrompt,

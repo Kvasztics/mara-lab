@@ -177,6 +177,7 @@ public function getAll(
  */
   public function update(int $id, array $data): bool
   {
+    $data['card_data'] = $data['card_data'] ?? null;
     $stmt = $this->DB->prepare(
       "UPDATE {$this->table}
        SET provider = ?,
@@ -195,12 +196,13 @@ public function getAll(
            rag_limit = ?,
            parameters = ?,
            modelinfo = ?,
-           rag_ids = ?
+           rag_ids = ?,
+           card_data = COALESCE(?, card_data)
        WHERE id = ?"
     );
 
     $stmt->bind_param(
-      'sssiissssiiidisssi',
+      'sssiissssiiidissssi',
       $data['provider'],
       $data['basemodel'],
       $data['mmproj'],
@@ -218,6 +220,7 @@ public function getAll(
       $data['parameters'],
       $data['modelinfo'],
       $data['rag_ids'],
+      $data['card_data'],
       $id
     );
 
@@ -231,18 +234,19 @@ public function getAll(
  */
 public function insert(array $data): int
   {
+    $data['card_data'] = $data['card_data'] ?? null;
     $stmt = $this->DB->prepare(
       "INSERT INTO {$this->table}
        (
          provider, basemodel, mmproj, user_id, voice_id, name, note,
          prompt, image, thinking, psyche, rag, rag_similarity, rag_limit,
-         parameters, modelinfo, rag_ids
+         parameters, modelinfo, rag_ids, card_data
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     $stmt->bind_param(
-      'sssiissssiiidisss',
+      'sssiissssiiidissss',
       $data['provider'],
       $data['basemodel'],
       $data['mmproj'],
@@ -259,7 +263,8 @@ public function insert(array $data): int
       $data['rag_limit'],
       $data['parameters'],
       $data['modelinfo'],
-      $data['rag_ids']
+      $data['rag_ids'],
+      $data['card_data']
     );
 
     if (!$stmt->execute())

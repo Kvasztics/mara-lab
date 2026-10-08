@@ -86,7 +86,8 @@ CREATE TABLE `models` (
   `parameters` text COLLATE utf8mb4_unicode_ci,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `modelinfo` text COLLATE utf8mb4_unicode_ci
+  `modelinfo` text COLLATE utf8mb4_unicode_ci,
+  `card_data` mediumtext COLLATE utf8mb4_unicode_ci
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

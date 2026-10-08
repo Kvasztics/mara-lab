@@ -831,46 +831,61 @@ async function changeChat(chatId)
       }
   }  
 
+let newChatStarting = false;
+
 async function newChat()
   {
-    if (chatSending || attachmentUploading) { return; }
+    if (chatSending || attachmentUploading || modelChanging || newChatStarting) {
+        return;
+    }
+    newChatStarting = true;
     clearAttachment();
-
     showLoader();
 
     try
       {
-        const response = await fetch('/chat_ajax/newchat',
-          {
-            method: 'POST'
-          });
-
+        const response = await fetch('/chat_ajax/newchat', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
         const result = await response.json();
 
-        if (!result.success)
-          {
+        if (response.status === 401 && result.redirect) {
+            window.location.assign(result.redirect);
             return;
-          }
+        }
+        if (!response.ok || !result.success) {
+            if (result.error && typeof _alert === 'function') {
+                _alert(result.error);
+            }
+            return;
+        }
 
         const messages = document.getElementById('chat_messages');
-        const input    = document.getElementById('chat_message');
+        const input = document.getElementById('chat_message');
 
-        if (messages)
-          {
-            messages.innerHTML = '';
-          }
+        document.querySelectorAll('.chat-item.active').forEach((item) => {
+            item.classList.remove('active');
+        });
 
-        document.querySelectorAll('.chat-item.active')
-          .forEach(function(item)
-            {
-              item.classList.remove('active');
+        if (typeof result.titles === 'string') {
+            const list = document.getElementById('chat_list');
+            if (list) list.innerHTML = result.titles;
+        }
+
+        if (messages) {
+            messages.innerHTML = result.messages || '';
+            messages.querySelectorAll('.model-message-content').forEach((element) => {
+                renderCode(element);
             });
+            messages.scrollTop = messages.scrollHeight;
+        }
 
-        if (input)
-          {
+        if (input) {
             input.value = '';
             input.focus();
-          }
+        }
       }
     catch (error)
       {
@@ -878,6 +893,7 @@ async function newChat()
       }
     finally
       {
+        newChatStarting = false;
         hideLoader();
       }
   }
