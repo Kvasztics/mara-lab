@@ -3,14 +3,14 @@
 choose() {
   local target=$1 prompt=$2 value
   while true; do
-    read -r -p "$prompt" value || die 'Megszakított adatbevitel.'
+    read -r -p "$prompt" value || die 'Input cancelled.'
     case "$value" in 1|2) printf -v "$target" '%s' "$value"; return;; esac
-    echo '1 vagy 2 legyen.'
+    echo 'Enter 1 or 2.'
   done
 }
 ask() {
   local target=$1 prompt=$2 fallback=$3 value
-  read -r -p "$prompt [$fallback]: " value || die 'Megszakított adatbevitel.'
+  read -r -p "$prompt [$fallback]: " value || die 'Input cancelled.'
   printf -v "$target" '%s' "${value:-$fallback}"
 }
 valid_url() {
@@ -20,77 +20,77 @@ collect_providers() {
   local selection action
   OLLAMA_ACTION=none LLAMA_ACTION=none
   OLLAMA_URL='' LLAMA_URL='' LLAMA_BINARY='' LLAMA_MODELS=''
-  echo 'Provider: 1) Ollama  2) llama.cpp  3) mindkettő'
+  echo 'Provider: 1) Ollama  2) llama.cpp  3) both'
   while true; do
-    read -r -p 'Választás: ' selection || die 'Megszakított adatbevitel.'
+    read -r -p 'Selection: ' selection || die 'Input cancelled.'
     case "$selection" in 1) PROVIDERS=ollama; DEFAULT_PROVIDER=ollama; break;;
       2) PROVIDERS=llamacpp; DEFAULT_PROVIDER=llamacpp; break;;
       3) PROVIDERS=ollama,llamacpp; break;; esac
-    echo '1, 2 vagy 3 legyen.'
+    echo 'Enter 1, 2 or 3.'
   done
   if [[ $selection == 3 ]]; then
-    choose action 'Alapértelmezett: 1) Ollama  2) llama.cpp: '
+    choose action 'Default: 1) Ollama  2) llama.cpp: '
     if [[ $action == 1 ]]; then DEFAULT_PROVIDER=ollama; else DEFAULT_PROVIDER=llamacpp; fi
   fi
   if [[ ,$PROVIDERS, == *,ollama,* ]]; then
-    choose action 'Ollama: 1) meglévő szerver  2) telepítés erre a gépre: '
+    choose action 'Ollama: 1) existing server  2) install on this machine: '
     if [[ $action == 1 ]]; then
       OLLAMA_ACTION=existing
-      ask OLLAMA_URL 'Ollama alap URL (útvonal nélkül)' 'http://127.0.0.1:11434'
+      ask OLLAMA_URL 'Ollama base URL (without a path)' 'http://127.0.0.1:11434'
     else
       OLLAMA_ACTION=install OLLAMA_URL=http://127.0.0.1:11434
-      command -v ollama >/dev/null && die 'Ollama már telepítve van; válaszd a meglévő szervert.'
-      [[ -z $(systemctl list-unit-files ollama.service --no-legend) ]] || die 'Ollama service már létezik; válaszd a meglévő szervert.'
-      [[ -z $(ss -H -ltn 'sport = :11434') ]] || die 'Az Ollama 11434-es portja foglalt.'
-      ((PORT != 11434)) || die 'A weboldal portja ütközik az Ollamával.'
+      command -v ollama >/dev/null && die 'Ollama is already installed; select the existing server.'
+      [[ -z $(systemctl list-unit-files ollama.service --no-legend) ]] || die 'The Ollama service already exists; select the existing server.'
+      [[ -z $(ss -H -ltn 'sport = :11434') ]] || die 'Ollama port 11434 is already in use.'
+      ((PORT != 11434)) || die 'The web application port conflicts with Ollama.'
     fi
   fi
   if [[ ,$PROVIDERS, == *,llamacpp,* ]]; then
-    echo 'A llama.cpp-t a Mara közvetlenül indítja a helyi GGUF modellekkel.'
-    choose action 'llama.cpp: 1) meglévő helyi telepítés  2) új CPU-telepítés: '
+    echo 'Mara starts llama.cpp directly using local GGUF models.'
+    choose action 'llama.cpp: 1) existing local installation  2) new CPU installation: '
     if [[ $action == 1 ]]; then
       LLAMA_ACTION=existing
-      ask LLAMA_URL 'llama.cpp alap URL (127.0.0.1 és szabad port)' 'http://127.0.0.1:8082'
-      ask LLAMA_BINARY 'llama-server teljes útvonala' '/usr/local/bin/llama-server'
-      ask LLAMA_MODELS 'GGUF modellek mappája' '/var/lib/mara-lab/models'
+      ask LLAMA_URL 'llama.cpp base URL (127.0.0.1 and an available port)' 'http://127.0.0.1:8082'
+      ask LLAMA_BINARY 'Absolute path to llama-server' '/usr/local/bin/llama-server'
+      ask LLAMA_MODELS 'GGUF model directory' '/var/lib/mara-lab/models'
     else
       LLAMA_ACTION=install
       LLAMA_BUILD="/opt/mara-llama-$PORT"
       LLAMA_BINARY="$LLAMA_BUILD/build/bin/llama-server"
       LLAMA_MODELS="/var/lib/mara-llama-$PORT/models"
-      ask LLAMA_URL 'llama.cpp alap URL (127.0.0.1 és szabad port)' 'http://127.0.0.1:8082'
-      [[ ! -e $LLAMA_BUILD && ! -L $LLAMA_BUILD && ! -e $(dirname "$LLAMA_MODELS") && ! -L $(dirname "$LLAMA_MODELS") ]] || die 'A llama.cpp célmappája már létezik.'
-      echo 'A fordítás kis gépen hosszabb lehet; két fordítószálat használunk. Modellt külön kell hozzáadni.'
+      ask LLAMA_URL 'llama.cpp base URL (127.0.0.1 and an available port)' 'http://127.0.0.1:8082'
+      [[ ! -e $LLAMA_BUILD && ! -L $LLAMA_BUILD && ! -e $(dirname "$LLAMA_MODELS") && ! -L $(dirname "$LLAMA_MODELS") ]] || die 'The llama.cpp destination directory already exists.'
+      echo 'Compilation may take longer on smaller machines; two build threads are used. Add models separately.'
     fi
   fi
 }
 validate_providers() {
   if [[ $OLLAMA_ACTION != none ]]; then
-    valid_url "$OLLAMA_URL" || die 'Érvénytelen Ollama alap URL.'
+    valid_url "$OLLAMA_URL" || die 'Invalid Ollama base URL.'
     OLLAMA_URL=${OLLAMA_URL%/}
     if [[ $OLLAMA_ACTION == existing ]]; then
-      curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$OLLAMA_URL/api/tags" | php -r '$d=json_decode(stream_get_contents(STDIN),true); exit(is_array($d) && isset($d["models"]) && is_array($d["models"]) ? 0 : 1);' || die 'Az Ollama nem elérhető, vagy nem ad modell-listát. Indítsd el, majd próbáld újra.'
+      curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$OLLAMA_URL/api/tags" | php -r '$d=json_decode(stream_get_contents(STDIN),true); exit(is_array($d) && isset($d["models"]) && is_array($d["models"]) ? 0 : 1);' || die 'Ollama is unreachable or did not return a model list. Start it and try again.'
     fi
   fi
   if [[ $LLAMA_ACTION != none ]]; then
-    valid_url "$LLAMA_URL" || die 'Érvénytelen llama.cpp alap URL.'
+    valid_url "$LLAMA_URL" || die 'Invalid llama.cpp base URL.'
     LLAMA_URL=${LLAMA_URL%/}
-    [[ $LLAMA_URL =~ ^http://127\.0\.0\.1:([0-9]{1,5})$ ]] || die 'A közvetlen llama.cpp cím http://127.0.0.1:PORT legyen.'
+    [[ $LLAMA_URL =~ ^http://127\.0\.0\.1:([0-9]{1,5})$ ]] || die 'The direct llama.cpp URL must use http://127.0.0.1:PORT.'
     LLAMA_PORT=$((10#${BASH_REMATCH[1]}))
-    ((LLAMA_PORT >= 1024 && LLAMA_PORT <= 65535 && LLAMA_PORT != PORT)) || die 'Érvénytelen vagy a weboldallal ütköző llama.cpp port.'
-    [[ $OLLAMA_ACTION == none || $LLAMA_PORT != 11434 ]] || die 'A llama.cpp portja ütközik az Ollamával.'
-    [[ $LLAMA_BINARY == /* && $LLAMA_MODELS == /* ]] || die 'A llama.cpp útvonalak abszolútak legyenek.'
+    ((LLAMA_PORT >= 1024 && LLAMA_PORT <= 65535 && LLAMA_PORT != PORT)) || die 'The llama.cpp port is invalid or conflicts with the web application.'
+    [[ $OLLAMA_ACTION == none || $LLAMA_PORT != 11434 ]] || die 'The llama.cpp port conflicts with Ollama.'
+    [[ $LLAMA_BINARY == /* && $LLAMA_MODELS == /* ]] || die 'The llama.cpp paths must be absolute.'
     if [[ $LLAMA_ACTION == existing ]]; then
-      runuser -u www-data -- test -x "$LLAMA_BINARY" || die "A www-data nem tudja futtatni: $LLAMA_BINARY. Ellenőrizd a szülőmappák jogosultságát is."
-      runuser -u www-data -- test -r "$LLAMA_MODELS" && runuser -u www-data -- test -x "$LLAMA_MODELS" || die "A www-data nem tudja olvasni a modellmappát: $LLAMA_MODELS"
+      runuser -u www-data -- test -x "$LLAMA_BINARY" || die "www-data cannot execute: $LLAMA_BINARY. Check parent directory permissions as well."
+      runuser -u www-data -- test -r "$LLAMA_MODELS" && runuser -u www-data -- test -x "$LLAMA_MODELS" || die "www-data cannot read the model directory: $LLAMA_MODELS"
       local model count=0
       while IFS= read -r -d '' model; do
-        runuser -u www-data -- test -r "$model" || die "A www-data nem tudja olvasni: $model"
+        runuser -u www-data -- test -r "$model" || die "www-data cannot read: $model"
         count=$((count + 1))
       done < <(find "$LLAMA_MODELS" -maxdepth 1 -name '*.gguf' -type f -print0)
-      ((count > 0)) || echo 'A modellmappa üres. Telepítés után adj hozzá GGUF modellt.'
+      ((count > 0)) || echo 'The model directory is empty. Add a GGUF model after installation.'
     else
-      [[ -z $(ss -H -ltn "sport = :$LLAMA_PORT") ]] || die 'A llama.cpp portja foglalt.'
+      [[ -z $(ss -H -ltn "sport = :$LLAMA_PORT") ]] || die 'The llama.cpp port is already in use.'
     fi
   fi
 }
@@ -99,9 +99,9 @@ install_providers() {
     local script
     script=$(mktemp)
     if ! curl --fail --show-error --location --proto '=https' --proto-redir '=https' https://ollama.com/install.sh -o "$script"; then
-      rm -f -- "$script"; die 'Az Ollama telepítő nem tölthető le.'
+      rm -f -- "$script"; die 'Cannot download the Ollama installer.'
     fi
-    if ! sh "$script"; then rm -f -- "$script"; die 'Az Ollama telepítése sikertelen.'; fi
+    if ! sh "$script"; then rm -f -- "$script"; die 'Ollama installation failed.'; fi
     rm -f -- "$script"
     systemctl enable --now ollama
     local ready=0 attempt
@@ -109,14 +109,14 @@ install_providers() {
       if curl --fail --silent --connect-timeout 2 --max-time 3 "$OLLAMA_URL/api/tags" >/dev/null; then ready=1; break; fi
       sleep 1
     done
-    ((ready)) || die 'A telepített Ollama nem válaszol.'
+    ((ready)) || die 'The installed Ollama server is not responding.'
   fi
   if [[ $LLAMA_ACTION == install ]]; then
     git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$LLAMA_BUILD"
     git -C "$LLAMA_BUILD" rev-parse HEAD > "$LLAMA_BUILD/MARA_BUILD_COMMIT"
     cmake -S "$LLAMA_BUILD" -B "$LLAMA_BUILD/build" -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=OFF -DGGML_BLAS=OFF
     cmake --build "$LLAMA_BUILD/build" --config Release --target llama-server -j 2
-    # A könyvtárak és a dinamikus függőségek is elérhetők a www-data számára.
+    # Make directories and shared libraries accessible to www-data.
     find "$LLAMA_BUILD" -type d -exec chmod o+rx {} +
     find "$LLAMA_BUILD/build" -type f -exec chmod o+r {} +
     chmod 0755 "$LLAMA_BINARY"

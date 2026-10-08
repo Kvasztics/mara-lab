@@ -58,9 +58,28 @@ This uses a new application directory, database, and web port. System packages a
 
 Optional `--with-audio-tools` installs ffmpeg and eSpeak NG. Other speech services and models need separate setup.
 
+## MaraImg and image backends
+
+MaraImg is included in the web application. Forge and Qwen Image 2.1
+(via stable-diffusion.cpp), their dependencies and model weights require
+separate installation. Configure the backend URLs in Mara Lab settings.
+
+The installer installs the service-control helper for `www-data`. It does
+not create Forge or Qwen systemd units; local service controls require the
+corresponding `sd-forge.service` or `qwen-image.service` to be configured.
+Remote backends can be used through their APIs, but local service controls
+do not manage remote servers.
+
+The generated nginx configuration sets `fastcgi_read_timeout 630s`.
+For an existing deployment, check this setting in the active nginx site
+configuration and reload nginx after validation. Image requests use a
+600-second backend timeout and allow 630 seconds for PHP processing.
+A configured PHP-FPM `request_terminate_timeout` must also allow these
+long-running requests.
+
 ## Status and troubleshooting
 
-Fresh application/database installation with an existing llama.cpp backend has been tested on a Raspberry Pi 4. New backend installation on a clean system remains to be validated. Installer prompts are currently in Hungarian; an English version is planned.
+Fresh application/database installation with an existing llama.cpp backend has been tested on a Raspberry Pi 4. New backend installation on a clean system remains to be validated. Installer prompts and messages are in English.
 
 The installer refuses conflicting targets and does not upgrade existing installations. Logs are written to `/var/log/mara-lab-WEBPORT-install-TIMESTAMP.log`. Failed installations can leave packages, backend files, an application directory, or a partially created database behind; inspect the log and created resources before retrying. There is no complete automatic rollback.
 

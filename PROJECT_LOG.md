@@ -65,3 +65,16 @@
 - “Use prompt” restores positive and negative prompts and opens the generation tab.
 - Existing generation settings and image files remain unchanged.
 - PHP syntax checks passed; metadata reading, dialog display and prompt reuse verified.
+
+### 2026-10-08 — README feature updates
+- Documented the framework-free PHP/JavaScript implementation.
+- Added update_emotional_state to the tool list.
+- Added MaraImg capabilities and separate backend requirements.
+- Image search remains planned: the current search_web tool returns web results only.
+
+### 2026-10-08 — English installer
+- Translated install.sh and providers.sh prompts, messages and comments into English.
+- Translated the setup.php completion message; services.sh was already English.
+- Updated README installer language and planned work.
+- Individual Bash syntax checks and setup.php PHP syntax check passed.
+- Translation changes have not yet been tested with a fresh installation.

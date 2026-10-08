@@ -67,4 +67,4 @@ foreach (['DB_HOST'=>'localhost','DB_USER'=>$database,'DB_PASS'=>$dbPassword,'DB
 }
 if (file_put_contents($root.'/config/config.php', $config, LOCK_EX) === false) { throw new RuntimeException('Cannot write configuration.'); }
 chmod($root.'/config/config.php', 0640);
-echo "Adatbázis, kezdőbeállítások és első felhasználó létrehozva.\n";
+echo "Database, initial settings and administrator account created.\n";

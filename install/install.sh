@@ -15,82 +15,82 @@ while (($#)); do
     --check-providers) CHECK_PROVIDERS=1; shift ;;
     --with-audio-tools) EXTRAS=1; shift ;;
     --dir|--port|--database)
-      (($# >= 2)) || { echo 'Hiányzó argumentum.' >&2; exit 1; }
+      (($# >= 2)) || { echo 'Missing argument.' >&2; exit 1; }
       case "$1" in --dir) DEST=$2;; --port) PORT=$2;; --database) DB=$2;; esac
       shift 2 ;;
-    --help) echo 'Használat: sudo bash install/install.sh [--dry-run] [--check-providers] [--dir /var/www/mara-lab] [--port 8081] [--database maralab] [--with-audio-tools]'; exit 0 ;;
-    *) echo "Ismeretlen kapcsoló: $1" >&2; exit 1 ;;
+    --help) echo 'Usage: sudo bash install/install.sh [--dry-run] [--check-providers] [--dir /var/www/mara-lab] [--port 8081] [--database maralab] [--with-audio-tools]'; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
-die() { echo "HIBA: $*" >&2; exit 1; }
+die() { echo "ERROR: $*" >&2; exit 1; }
 . "$SOURCE/install/providers.sh"
-[[ $DEST =~ ^/var/www/[a-zA-Z0-9_-]+$ ]] || die 'A cél egy új /var/www/ALMAPPANÉV legyen.'
-[[ $DB =~ ^[a-z][a-z0-9_]{0,31}$ ]] || die 'Érvénytelen adatbázisnév.'
-[[ $PORT =~ ^[0-9]{1,5}$ ]] || die 'Érvénytelen port.'
+[[ $DEST =~ ^/var/www/[a-zA-Z0-9_-]+$ ]] || die 'The destination must be a new directory under /var/www/DIRECTORY_NAME.'
+[[ $DB =~ ^[a-z][a-z0-9_]{0,31}$ ]] || die 'Invalid database name.'
+[[ $PORT =~ ^[0-9]{1,5}$ ]] || die 'Invalid port.'
 PORT=$((10#$PORT))
-((PORT >= 1024 && PORT <= 65535)) || die 'A port 1024–65535 közötti legyen.'
-[[ -r /etc/os-release ]] || die 'Nem azonosítható rendszer.'
+((PORT >= 1024 && PORT <= 65535)) || die 'The port must be between 1024 and 65535.'
+[[ -r /etc/os-release ]] || die 'Cannot identify the operating system.'
 . /etc/os-release
-[[ $ID == debian && $VERSION_ID == 13 ]] || die 'Az első változat csak Debian 13-at támogat.'
+[[ $ID == debian && $VERSION_ID == 13 ]] || die 'This release supports Debian 13 only.'
 ARCH=$(uname -m)
-[[ $ARCH == aarch64 || $ARCH == x86_64 ]] || die "Nem támogatott architektúra: $ARCH"
+[[ $ARCH == aarch64 || $ARCH == x86_64 ]] || die "Unsupported architecture: $ARCH"
 SITE="mara-lab-$PORT"
 if ((CHECK_PROVIDERS == 0)); then
-[[ ! -e $DEST && ! -L $DEST ]] || die "A cél már létezik: $DEST"
-[[ ! -e /etc/nginx/sites-available/$SITE && ! -L /etc/nginx/sites-enabled/$SITE ]] || die 'Az Nginx-beállítás már létezik.'
+[[ ! -e $DEST && ! -L $DEST ]] || die "The destination already exists: $DEST"
+[[ ! -e /etc/nginx/sites-available/$SITE && ! -L /etc/nginx/sites-enabled/$SITE ]] || die 'The nginx site configuration already exists.'
 if command -v ss >/dev/null; then
-  [[ -z $(ss -H -ltn "sport = :$PORT") ]] || die 'A választott port foglalt.'
+  [[ -z $(ss -H -ltn "sport = :$PORT") ]] || die 'The selected port is already in use.'
 fi
 fi
 PACKAGES=(sudo nginx mariadb-server php-fpm php-cli php-mysql php-curl php-mbstring php-xml git ca-certificates curl)
 ((EXTRAS == 0)) || PACKAGES+=(ffmpeg espeak-ng)
-echo "Rendszer: Debian $VERSION_ID / $ARCH"
-echo "Cél: $DEST | port: $PORT | adatbázis: $DB"
-echo "Csomagok: ${PACKAGES[*]}"
+echo "System: Debian $VERSION_ID / $ARCH"
+echo "Destination: $DEST | port: $PORT | database: $DB"
+echo "Packages: ${PACKAGES[*]}"
 if ((DRY)); then
   if command -v dpkg-query >/dev/null; then
     for package in "${PACKAGES[@]}"; do
       state=$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null || true)
-      echo "$package: ${state:-hiányzik}"
+      echo "$package: ${state:-missing}"
     done
   fi
   if ((EUID == 0)) && command -v mariadb >/dev/null && systemctl is-active --quiet mariadb; then
-    [[ -z $(mariadb -N -e "SHOW DATABASES LIKE '$DB';") ]] || die 'Az adatbázis már létezik.'
+    [[ -z $(mariadb -N -e "SHOW DATABASES LIKE '$DB';") ]] || die 'The database already exists.'
   else
-    echo 'Az adatbázis ütközésvizsgálata a tényleges telepítéskor történik.'
+    echo 'Database conflicts will be checked during the actual installation.'
   fi
-  echo 'Próbaüzem kész: nem történt módosítás.'
+  echo 'Dry run complete: no changes were made.'
   exit 0
 fi
-((EUID == 0)) || die 'A tényleges telepítést sudo-val indítsd.'
-[[ -t 0 ]] || die 'Interaktív terminálból indítsd.'
+((EUID == 0)) || die 'Run the actual installation with sudo.'
+[[ -t 0 ]] || die 'Run this installer from an interactive terminal.'
 collect_providers
 if ((CHECK_PROVIDERS)); then
-  command -v php >/dev/null || die 'Az ellenőrzéshez PHP CLI szükséges.'
+  command -v php >/dev/null || die 'PHP CLI is required for validation.'
   validate_providers
-  echo "Providerellenőrzés kész: $PROVIDERS | alapértelmezett: $DEFAULT_PROVIDER. Nem történt módosítás."
+  echo "Provider validation complete: $PROVIDERS | default: $DEFAULT_PROVIDER. No changes were made."
   exit 0
 fi
 if [[ $LLAMA_ACTION == install ]]; then PACKAGES+=(build-essential cmake); fi
 if [[ $OLLAMA_ACTION == install ]]; then PACKAGES+=(zstd); fi
-read -r -p 'Első felhasználó neve: ' ADMIN_NAME
-read -r -p 'Belépési e-mail: ' ADMIN_EMAIL
-read -r -s -p 'Belépési jelszó (legalább 8 karakter): ' ADMIN_PASS; echo
-read -r -s -p 'Jelszó ismét: ' ADMIN_CONFIRM; echo
-[[ -n $ADMIN_NAME && ${#ADMIN_NAME} -le 32 ]] || die 'A név 1–32 karakter legyen.'
-[[ $ADMIN_EMAIL == *@*.* && ${#ADMIN_EMAIL} -le 64 ]] || die 'Érvénytelen e-mail.'
-[[ ${#ADMIN_PASS} -ge 8 && $ADMIN_PASS == "$ADMIN_CONFIRM" ]] || die 'Rövid vagy eltérő jelszó.'
+read -r -p 'Initial administrator name: ' ADMIN_NAME
+read -r -p 'Login email: ' ADMIN_EMAIL
+read -r -s -p 'Login password (at least 8 characters): ' ADMIN_PASS; echo
+read -r -s -p 'Repeat password: ' ADMIN_CONFIRM; echo
+[[ -n $ADMIN_NAME && ${#ADMIN_NAME} -le 32 ]] || die 'The name must contain 1 to 32 characters.'
+[[ $ADMIN_EMAIL == *@*.* && ${#ADMIN_EMAIL} -le 64 ]] || die 'Invalid email address.'
+[[ ${#ADMIN_PASS} -ge 8 && $ADMIN_PASS == "$ADMIN_CONFIRM" ]] || die 'The password is too short or the passwords do not match.'
 unset ADMIN_CONFIRM
 LOG="/var/log/$SITE-install-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
-trap 'echo "A telepítés megállt a(z) $LINENO. sorban. Napló: $LOG. A már létrehozott új fájlokat/adatbázist ellenőrizd újrafuttatás előtt."' ERR
+trap 'echo "Installation stopped at line $LINENO. Log: $LOG. Check any newly created files and database before running the installer again."' ERR
 apt-get update
 apt-get install -y "${PACKAGES[@]}"
 systemctl enable --now mariadb php8.4-fpm nginx
-[[ -S /run/php/php8.4-fpm.sock ]] || die 'A PHP 8.4 FPM socket hiányzik.'
-# Minden ütközést ellenőrzünk az alkalmazás másolása előtt.
-[[ -z $(mariadb -N -e "SHOW DATABASES LIKE '$DB';") ]] || die 'Az adatbázis már létezik.'
-[[ -z $(mariadb -N -e "SELECT User FROM mysql.user WHERE User='$DB';") ]] || die 'Az adatbázis-felhasználó neve már foglalt.'
+[[ -S /run/php/php8.4-fpm.sock ]] || die 'A PHP 8.4 FPM socket missing.'
+# Check all conflicts before copying the application.
+[[ -z $(mariadb -N -e "SHOW DATABASES LIKE '$DB';") ]] || die 'The database already exists.'
+[[ -z $(mariadb -N -e "SELECT User FROM mysql.user WHERE User='$DB';") ]] || die 'The database user already exists.'
 nginx -t
 validate_providers
 install_providers
@@ -127,12 +127,12 @@ EOF
 ln -s "/etc/nginx/sites-available/$SITE" "/etc/nginx/sites-enabled/$SITE"
 if ! nginx -t; then
   rm -- "/etc/nginx/sites-enabled/$SITE"
-  die 'Az új Nginx-konfiguráció hibás; nem töltöttük be.'
+  die 'The new nginx configuration is invalid; it was not loaded.'
 fi
 systemctl reload nginx
 CODE=$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$PORT/auth/login")
-[[ $CODE == 200 ]] || die "A belépési oldal ellenőrzése sikertelen: HTTP $CODE"
-echo "Kész: http://$(hostname).local:$PORT/auth/login"
-echo "Belépés: $ADMIN_EMAIL | napló: $LOG"
-echo "Providerek: $PROVIDERS | alapértelmezett: $DEFAULT_PROVIDER"
-echo 'A szolgáltatás telepítése nem tölt le modellt. Ollamához tölts le egyet; llama.cpp-hez helyezz GGUF fájlt a megadott modellmappába.'
+[[ $CODE == 200 ]] || die "Login page validation failed: HTTP $CODE"
+echo "Ready: http://$(hostname).local:$PORT/auth/login"
+echo "Login: $ADMIN_EMAIL | log: $LOG"
+echo "Providers: $PROVIDERS | default: $DEFAULT_PROVIDER"
+echo 'Backend installation does not download a model. Download a model for Ollama, or place a GGUF file in the configured llama.cpp model directory.'

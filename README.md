@@ -20,6 +20,8 @@ The model can update its memory through an enabled tool. Its full personality pr
 
 ## Features
 
+Mara Lab is built with PHP and JavaScript. No application framework is required.
+
 ### Model providers
 
 Mara Lab currently supports **Ollama** and **llama.cpp**. Use one or both, choose a default provider, and create Mara characters around available base models. Further provider support is planned.
@@ -35,8 +37,19 @@ A Mara model configuration combines a base model with its prompts, character pro
 | `generate_image` | Generate images through a configured image backend, retaining the prompts for later inspection. |
 | `rate_user` | Record the model's assessment of the user's interaction. |
 | `update_memory` | Update persistent memory for the current Psyché. |
+| `update_emotional_state` | Record eight fictional character emotion values and a short explanatory note for the Emotional Ball feature. |
 
 Tools can be enabled per model. Custom tools can be added by implementing the [tool interface](core/tools/ToolInterface.php) and following the existing registration and execution conventions in [core/tools](core/tools). Tool use depends on the selected model's capabilities and configuration. Web search and image generation require separately configured services.
+
+### MaraImg
+
+MaraImg is the dedicated image workspace, with selectable Forge and Qwen Image 2.1 backends through stable-diffusion.cpp. It includes image generation, a personal gallery, image metadata viewing and prompt reuse.
+
+- **Forge:** batch generation, image-to-image processing, upscaling, progress reporting and generation interruption.
+- **Qwen Image 2.1:** text-to-image generation and reference-image editing. The current editing workflow uses tested 992 × 992 and 1152 × 864 sizes.
+- Upload a local image or select a gallery image as input. Administrators can control configured local backend services.
+
+Image backends and their models must be installed and configured separately. Available operations depend on the selected backend.
 
 ### RAG knowledge management
 
@@ -74,7 +87,7 @@ Use the administrator credentials entered during installation. In Settings, revi
 
 **Installing a backend does not download an AI model.** Existing Ollama servers must be running during setup. Existing llama.cpp installations require a local executable and a readable GGUF model directory. New llama.cpp installation currently builds a CPU backend.
 
-See the [installation guide](install/README.md) for provider choices, alternate ports and paths, and troubleshooting. The current installer prompts are in Hungarian; an English installer is planned.
+See the [installation guide](install/README.md) for provider choices, alternate ports and paths, and troubleshooting. Installer prompts and messages are in English.
 
 ## Current status and next steps
 
@@ -85,7 +98,7 @@ Planned work includes:
 - **Vision support:** bringing image-understanding functionality from the earlier Mara application into Mara Lab.
 - **Video understanding:** exploring supported models for viewing and interpreting video content.
 - Additional providers and tools.
-- An English installer and broader installation testing.
+- Broader installation testing.
 
 Available capabilities depend on the chosen base model, hardware, and external services. The installer supports new installations; it does not upgrade an existing Mara installation.
 
