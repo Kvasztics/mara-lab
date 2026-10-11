@@ -214,6 +214,7 @@ INSERT INTO `settings` (`id`, `type`, `datakey`, `datavalue`, `datasettings`, `d
 
 CREATE TABLE `users` (
   `id` int NOT NULL,
+  `last_model_id` int DEFAULT NULL,
   `name` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `email` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `pass` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,

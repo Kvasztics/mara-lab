@@ -79,6 +79,20 @@ public function jssettings()
  * Generate one speech chunk for the active model voice.
  * The first chunk verifies a remote XTTS server; subsequent chunks skip it.
  */
+public function voiceavailable(): void
+  {
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $model = App::get('model');
+    $voice = is_array($model) ? ($model['voice'] ?? null) : null;
+    if (!is_array($voice) && is_array($model)) {
+        $voiceId = (int)($model['voice_id'] ?? 0);
+        $voice = $voiceId > 0 ? $this->VOC->getById($voiceId) : null;
+    }
+    echo json_encode(['success' => true, 'available' => is_array($voice)]);
+  }
+
 public function voice($var = []): void
   {
     User::loggedIn();

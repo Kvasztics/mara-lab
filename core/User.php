@@ -36,7 +36,7 @@ public static function loggedIn(): bool
             : '/main/view';
 
         $imageAjax = is_string($path)
-            && preg_match('~^/image_ajax(/|$)~', $path) === 1;
+            && preg_match('~^/[a-z0-9_]+_ajax(/|$)~i', $path) === 1;
 
         if (self::isAjax() || $imageAjax)
           {
@@ -119,7 +119,7 @@ public static function login(string $email, string $pass): array|null
     session_regenerate_id(true);
     unset($user['pass']);
     $_SESSION['user'] = $user;
-    unset($_SESSION['model_id']);
+    unset($_SESSION['model_id'], $_SESSION['chat_id']);
     return $user;
   }
 /**

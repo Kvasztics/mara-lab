@@ -43,6 +43,7 @@ node_modules/
 /var/log/
 /var/cache/
 /var/tmp/
+/var/run/
 *.pid
 
 # Szerkesztoi es biztonsagi masolatok
@@ -51,6 +52,7 @@ node_modules/
 *.rej
 *.swp
 *.swo
+/core/provider/*.php.bak-*
 
 # Tesztkimenetek
 /coverage/

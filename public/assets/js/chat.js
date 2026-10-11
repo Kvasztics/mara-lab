@@ -1,3 +1,22 @@
+// Handle expired sessions consistently for chat requests.
+async function chatFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+
+    const response = await fetch(url, {
+        ...options,
+        credentials: 'same-origin',
+        headers
+    });
+
+    if (response.status === 401) {
+        window.location.assign('/auth/login');
+        throw new Error('LOGIN_REQUIRED');
+    }
+
+    return response;
+}
+
 // Emotional Ball uses the existing state; rendering never invokes the model.
 const emotionalAxes = [
     ['joy', 'Öröm', '#e9b900'], ['trust', 'Bizalom', '#63ad46'],
@@ -65,7 +84,7 @@ async function refreshEmotionalChart() {
     const version = ++emotionalReadVersion;
     renderEmotionalChart(null);
     try {
-        const response = await fetch('/chat_ajax/emotionalstate', {cache: 'no-store'});
+        const response = await chatFetch('/chat_ajax/emotionalstate', {cache: 'no-store'});
         const result = await response.json();
         if (version === emotionalReadVersion) renderEmotionalChart(response.ok && result.success ? result.state : null);
     } catch (_) {
@@ -118,7 +137,7 @@ async function uploadChatImage(file) {
     try {
         const data = new FormData();
         data.append('image', file);
-        const response = await fetch('/chat_ajax/uploadimage', {method: 'POST', body: data});
+        const response = await chatFetch('/chat_ajax/uploadimage', {method: 'POST', body: data});
         const result = await response.json();
         if (!response.ok || !result.success || !result.path) {
             throw new Error(result.error || 'A feltöltés sikertelen.');
@@ -468,7 +487,7 @@ async function submitWhisperRecording()
         const data = new FormData();
         data.append('audio_blob', blob, 'recording.webm');
 
-        const response = await fetch('/main/transcribe', {
+        const response = await chatFetch('/main/transcribe', {
           method: 'POST',
           body: data
         });
@@ -494,10 +513,36 @@ async function submitWhisperRecording()
       }
   }
 
-function toggleSpeakerState()
+function voiceWarning(key) {
+    const message = sttMessage(key) || sttMessage('VOICE_ERROR_PLAYBACK') ||
+        'Speech playback is unavailable.';
+    if (typeof window._alert === 'function') {
+        window._alert(message);
+    } else {
+        window.alert(message);
+    }
+}
+
+async function requireVoice() {
+    try {
+        const response = await chatFetch('/main/voiceavailable');
+        if (!response.ok) throw new Error('Voice check failed.');
+        const result = await response.json();
+        if (result.success && result.available === true) return true;
+        voiceWarning('VOICE_ERROR_MISSING');
+    } catch (error) {
+        if (error.message !== 'LOGIN_REQUIRED') {
+            voiceWarning('VOICE_ERROR_PLAYBACK');
+        }
+    }
+    return false;
+}
+
+async function toggleSpeakerState()
   {
     const button = document.getElementById('btn_speaker');
 
+    if (!voiceEnabled && !(await requireVoice())) return;
     voiceEnabled = !voiceEnabled;
     updateVoiceToggle(button);
 
@@ -591,7 +636,7 @@ function stopVoicePlayback()
       }
   }
 
-function playVoiceText(text)
+async function playVoiceText(text)
   {
     const chunks = voiceChunks(text);
 
@@ -603,6 +648,16 @@ function playVoiceText(text)
     stopVoicePlayback();
 
     const token = voicePlaybackToken;
+    if (!(await requireVoice()) || token !== voicePlaybackToken) return;
+    let warned = false;
+    const failPlayback = function() {
+        if (warned || token !== voicePlaybackToken) return;
+        warned = true;
+        stopVoicePlayback();
+        voiceEnabled = false;
+        updateVoiceToggle(document.getElementById('btn_speaker'));
+        voiceWarning('VOICE_ERROR_PLAYBACK');
+    };
     const createAudio = function(index)
       {
         const verify = index === 0 ? '&verify=1' : '';
@@ -659,13 +714,14 @@ function playVoiceText(text)
             if (token === voicePlaybackToken)
               {
                 console.error('Voice playback failed.');
-                activeVoiceAudio = null;
+                failPlayback();
               }
           }, {once: true});
 
         audio.play().catch(function(error)
           {
             console.error('Voice playback could not start:', error);
+            failPlayback();
           });
       };
 
@@ -728,7 +784,7 @@ async function changeModel(modelId)
 
     try
       {
-        const response = await fetch('/model_ajax/changemodel',
+        const response = await chatFetch('/model_ajax/changemodel',
           {
             method: 'POST',
             body: data,
@@ -779,7 +835,7 @@ async function changeChat(chatId)
         const data = new FormData();
         data.append('id', chatId);
 
-        const response = await fetch('/chat_ajax/changechat',
+        const response = await chatFetch('/chat_ajax/changechat',
           {
             method: 'POST',
             body: data
@@ -844,7 +900,7 @@ async function newChat()
 
     try
       {
-        const response = await fetch('/chat_ajax/newchat', {
+        const response = await chatFetch('/chat_ajax/newchat', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -902,7 +958,7 @@ async function exportChat(chatId, button) {
     if (!Number.isInteger(chatId) || chatId <= 0) return;
     button.disabled = true;
     try {
-        const response = await fetch(`/chat_ajax/exportchat?id=${chatId}`, {cache: 'no-store'});
+        const response = await chatFetch(`/chat_ajax/exportchat?id=${chatId}`, {cache: 'no-store'});
         if (!response.ok) {
             const result = await response.json();
             throw new Error(result.error || 'Az exportálás sikertelen.');
@@ -987,7 +1043,7 @@ async function saveChatRename(input)
         data.append('id', chatId);
         data.append('name', name);
 
-        const response = await fetch('/chat_ajax/renamechat',
+        const response = await chatFetch('/chat_ajax/renamechat',
           {
             method: 'POST',
             body: data
@@ -1029,7 +1085,7 @@ async function deleteChat(chatId, item)
         const data = new FormData();
         data.append('id', chatId);
 
-        const response = await fetch('/chat_ajax/deletechat',
+        const response = await chatFetch('/chat_ajax/deletechat',
           {
             method: 'POST',
             body: data
@@ -1069,7 +1125,7 @@ function startChatStatus()
         {
           try
             {
-              const response = await fetch(
+              const response = await chatFetch(
                 '/status_ajax/getstatus',
                 {
                   method: 'GET',
@@ -1187,7 +1243,7 @@ async function sendMessage()
           rateUser && rateUser.checked ? '1' : '0'
         );
 
-        const response = await fetch(
+        const response = await chatFetch(
           '/chat_ajax/sendmessage',
           {
             method: 'POST',
@@ -1326,7 +1382,7 @@ async function getUserRating(messageId)
 
         formData.append('id', messageId);
 
-        const response = await fetch('/chat_ajax/getUserRating',
+        const response = await chatFetch('/chat_ajax/getUserRating',
           {
             method: 'POST',
             body: formData
@@ -1574,7 +1630,7 @@ async function runTurnAction(button, regenerate) {
         data.append('csrf_token', button.dataset.csrf || '');
         data.append('rate_user', document.getElementById('rate_user')?.checked ? '1' : '0');
         data.append('emotional_ball', document.getElementById('emotional_ball')?.checked ? '1' : '0');
-        const response = await fetch(
+        const response = await chatFetch(
             regenerate ? '/chat_ajax/regenerate' : '/chat_ajax/deleteturn',
             {
                 method: 'POST', body: data, credentials: 'same-origin',

@@ -61,5 +61,15 @@ public function login(string|int $userId, string $pass): array|null
       }
     return $user;
   }
+/** Remember the last successfully selected character for this user. */
+public function rememberModel(int $userId, int $modelId): bool
+  {
+    $stmt = $this->db->prepare(
+        "UPDATE users SET last_model_id = ? WHERE id = ?"
+    );
+    $stmt->bind_param('ii', $modelId, $userId);
+    return $stmt->execute();
+  }
+
 }
 ?>

@@ -94,6 +94,21 @@ public function getActiveModel(array $providers): ?array
   {
     $modelId = (int)($_SESSION['model_id'] ?? 0);
 
+    // Restore a remembered character only if it remains accessible.
+    if ($modelId <= 0) {
+        $rememberedId = (int)(User::get()['last_model_id'] ?? 0);
+        if ($rememberedId > 0) {
+            $remembered = $this->getById($rememberedId);
+            if ($remembered !== null &&
+                in_array((string)$remembered['provider'], $providers, true) &&
+                ((int)$remembered['user_id'] === 0 ||
+                 (int)$remembered['user_id'] === User::id() ||
+                 User::isAdmin())) {
+                return $remembered;
+            }
+        }
+    }
+
     // 1. Van sessionben modell.
     if ($modelId > 0)
       {
@@ -149,6 +164,17 @@ public function getActiveModel(array $providers): ?array
 public function setActiveModel(int $modelId): void
   {
     $_SESSION['model_id'] = $modelId;
+    $userId = User::id();
+    if ($userId > 0 &&
+        (int)($_SESSION['user']['last_model_id'] ?? 0) !== $modelId) {
+        try {
+            if ((new \mara\database\mUsers())->rememberModel($userId, $modelId)) {
+                $_SESSION['user']['last_model_id'] = $modelId;
+            }
+        } catch (\Throwable $error) {
+            error_log('Mara last model: '.$error->getMessage());
+        }
+    }
   }
 /**
  * Get first user model by provider.
