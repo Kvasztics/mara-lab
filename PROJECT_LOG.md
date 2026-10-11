@@ -239,3 +239,11 @@
 - Reuse a server only when model, projector, context size, parallel slots and GPU layers match.
 - Increased this installation's startup wait to 120 seconds after a logged 86-second 4B load.
 - Cross-model switching tested successfully; context-size switching verification pending.
+
+## 2026-10-11 — Switch to AGPL-3.0-only
+
+- Replaced PolyForm Noncommercial 1.0.0 with the official GNU AGPL v3 text.
+- Allowed personal and commercial use, including redistribution for a fee,
+  subject to AGPL notices and corresponding-source obligations.
+- Updated README and NOTICE; retained the previous license entry as history.
+

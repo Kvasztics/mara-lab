@@ -155,12 +155,15 @@ Ideas for experiments, new tools, and reproducible bug reports are welcome throu
 ## License
 
 Mara Lab's original code is licensed under the
-[PolyForm Noncommercial License 1.0.0](LICENSE).
+[GNU Affero General Public License v3.0 only](LICENSE)
+(SPDX: `AGPL-3.0-only`).
 
-Noncommercial use, modification and redistribution are permitted under its
-terms. Commercial use requires separate permission from the copyright holder.
-The license also permits use by the organizations listed in its
-“Noncommercial Organizations” section.
+Personal and commercial use, modification and redistribution are permitted
+under the license. Redistributed versions must retain the required notices
+and provide the corresponding source under the AGPL. Modified versions
+offered over a network must also offer their corresponding source to users
+interacting with them remotely.
 
-Mara Lab is source-available. Third-party components, models and assets remain
-subject to their own licenses. See [NOTICE](NOTICE) for attribution.
+Third-party components, models and assets remain subject to their own
+licenses. See [NOTICE](NOTICE) for attribution.
+

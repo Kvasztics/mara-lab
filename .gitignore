@@ -58,3 +58,6 @@ node_modules/
 /coverage/
 /.phpunit.cache/
 /.phpunit.result.cache
+
+# Local backup files
+/var/backups/
