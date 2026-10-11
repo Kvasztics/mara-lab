@@ -230,3 +230,12 @@
 - Reused chat busy state and the common confirmation modal for deletion.
 - Updated README with completed reply regeneration, pair deletion and llama.cpp DRY controls.
 - Corrected README: vision chat is available; video understanding remains planned.
+
+## 2026-10-11 — llama.cpp model switching
+- Migrated the existing installation's PID setting from /tmp to var/run/llama.pid.
+- Serialized direct server start/stop operations with a shared file lock.
+- Validate the tracked process before sending SIGTERM; wait for process exit and port release before removing its PID.
+- Refuse a new launch when the port is occupied without a valid tracked process.
+- Reuse a server only when model, projector, context size, parallel slots and GPU layers match.
+- Increased this installation's startup wait to 120 seconds after a logged 86-second 4B load.
+- Cross-model switching tested successfully; context-size switching verification pending.

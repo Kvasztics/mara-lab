@@ -51,7 +51,7 @@ class LlamaCppProvider implements ProviderInterface
         }
         if (preg_match('/out of memory|unable to allocate CUDA|failed to allocate CUDA/i', $text)) {
             $fallback = 'A modell betöltése sikertelen: nincs elég szabad GPU-memória. Szabadíts fel VRAM-ot (például a képgenerátor leállításával), majd próbáld újra.';
-        } elseif (preg_match('/address already in use|failed to bind/i', $text)) {
+        } elseif (preg_match('/address already in use|failed to bind|couldn.t bind HTTP server socket/i', $text)) {
             $fallback = 'A llama.cpp portját már egy másik folyamat használja.';
         } elseif (preg_match('/invalid gguf|invalid magic|unsupported.*architecture/i', $text)) {
             $fallback = 'A modellfájl hibás, vagy ezt a modellt a llama.cpp jelenlegi verziója nem támogatja.';
@@ -84,7 +84,7 @@ class LlamaCppProvider implements ProviderInterface
     public function stop(): bool
     {
         $stopped = match ($this->mode) {
-            'direct' => $this->stopDirectServer(),
+            'direct' => $this->withDirectLock(fn(): bool => $this->stopDirectServer()),
             default  => false,
         };
 
@@ -626,7 +626,7 @@ error_log(
 
         try {
         $prepared = match ($this->mode) {
-            'direct' => $this->prepareDirect($baseModel, $mmproj, $model['parameters'] ?? []),
+            'direct' => $this->withDirectLock(fn(): bool => $this->prepareDirect($baseModel, $mmproj, $model['parameters'] ?? [])),
             'router' => $this->prepareRouter($baseModel),
             default  => false,
         };
@@ -675,6 +675,103 @@ error_log(
 		return true;
 	}
 
+
+    /** Serialize lifecycle operations across PHP workers. */
+    private function withDirectLock(callable $operation): bool
+    {
+        $lock = @fopen($this->pidFile.'.lock', 'c');
+        if ($lock === false) {
+            throw new RuntimeException('A llama.cpp zárolási fájlja nem írható.');
+        }
+        try {
+            $deadline = microtime(true) + $this->startupTimeout;
+            while (!flock($lock, LOCK_EX | LOCK_NB)) {
+                if (microtime(true) >= $deadline) {
+                    throw new RuntimeException('Másik llama.cpp modellváltás van folyamatban. Próbáld újra.');
+                }
+                usleep($this->startupPollMs * 1000);
+            }
+            return $operation();
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /** A failed HTTP health check does not mean the listening socket is gone. */
+    private function directPortOccupied(): bool
+    {
+        $host = (string)parse_url($this->baseUrl, PHP_URL_HOST);
+        $port = (int)parse_url($this->baseUrl, PHP_URL_PORT);
+        if (!in_array($host, ['127.0.0.1', 'localhost', '::1'], true) || $port <= 0) {
+            throw new RuntimeException('Direct módban helyi llama.cpp URL és explicit port szükséges.');
+        }
+        $target = str_contains($host, ':') ? '['.$host.']' : $host;
+        $socket = @stream_socket_client(
+            'tcp://'.$target.':'.$port, $errno, $error, 0.3
+        );
+        if ($socket === false) return false;
+        fclose($socket);
+        return true;
+    }
+
+    private function isManagedDirectProcess(int $pid): bool
+    {
+        $command = @file_get_contents('/proc/'.$pid.'/cmdline');
+        if (!is_string($command) || $command === '') return false;
+        $args = explode("\0", rtrim($command, "\0"));
+        $actualBinary = realpath($args[0] ?? '');
+        $expectedBinary = realpath($this->binary);
+        $portIndex = array_search('--port', $args, true);
+        return $expectedBinary !== false &&
+            $actualBinary === $expectedBinary &&
+            $portIndex !== false &&
+            ($args[$portIndex + 1] ?? '') ===
+                (string)parse_url($this->baseUrl, PHP_URL_PORT) &&
+            function_exists('posix_geteuid') &&
+            @fileowner('/proc/'.$pid) === posix_geteuid();
+    }
+
+
+    private function directConfigurationMatches(
+        string $baseModel,
+        string $mmproj,
+        array $parameters
+    ): bool {
+        $pid = (int)trim((string)@file_get_contents($this->pidFile));
+        if (!$this->processAlive($pid) || !$this->isManagedDirectProcess($pid)) {
+            return false;
+        }
+        $command = @file_get_contents('/proc/'.$pid.'/cmdline');
+        if (!is_string($command) || $command === '') return false;
+        $args = explode("\0", rtrim($command, "\0"));
+        $value = static function (string $flag) use ($args): ?string {
+            $index = array_search($flag, $args, true);
+            return $index === false ? null : ($args[$index + 1] ?? null);
+        };
+
+        $expectedModel = realpath($this->modelDir.'/'.$baseModel);
+        if ($expectedModel === false ||
+            realpath($value('--model') ?? '') !== $expectedModel) {
+            return false;
+        }
+        if ($mmproj === '') {
+            if ($value('--mmproj') !== null) return false;
+        } else {
+            $expectedProjector = realpath($this->modelDir.'/'.$mmproj);
+            if ($expectedProjector === false ||
+                realpath($value('--mmproj') ?? '') !== $expectedProjector) {
+                return false;
+            }
+        }
+
+        $context = max(512, (int)($parameters['num_ctx'] ?? 4096))
+            * max(1, $this->parallel);
+        return $value('--ctx-size') === (string)$context &&
+            $value('--parallel') === (string)$this->parallel &&
+            $value('--n-gpu-layers') === (string)$this->gpuLayers;
+    }
+
 private function prepareDirect(
     string $baseModel,
     string $mmproj = '',
@@ -686,7 +783,8 @@ private function prepareDirect(
       // Már fut, és pontosan a kívánt modell van betöltve.
       $runningModel = $this->getDirectModel();
 
-      if ($runningModel === $modelId) {
+      if ($runningModel === $modelId &&
+          $this->directConfigurationMatches($baseModel, $mmproj, $parameters)) {
           $this->modelId = $modelId;
           return true;
       }
@@ -697,6 +795,12 @@ private function prepareDirect(
               $this->modelId = null;
               return false;
           }
+      }
+
+      // Clear a still-live tracked process even if its HTTP API is unavailable.
+      if (!$this->stopDirectServer()) {
+          $this->modelId = null;
+          return false;
       }
 
       // Nem fut llama-server: elindítjuk a kívánt modellel.
@@ -737,6 +841,9 @@ private function startDirectServer(
     array $parameters = []
 ): bool
 {
+    if ($this->directPortOccupied()) {
+        throw new RuntimeException('A llama.cpp portja még foglalt; nem indítok második szervert.');
+    }
     clearstatcache(true, $this->logFile);
     $this->startupLogOffset = is_file($this->logFile) ? (int)filesize($this->logFile) : 0;
     $modelId   = pathinfo($baseModel, PATHINFO_FILENAME);
@@ -857,38 +964,45 @@ private function startDirectServer(
 
   private function stopDirectServer(): bool
   {
-      if (!is_file($this->pidFile)) {
+      clearstatcache(true, $this->pidFile);
+      $pid = (int)trim((string)@file_get_contents($this->pidFile));
+
+      if ($pid <= 0 || !$this->processAlive($pid)) {
+          if ($this->directPortOccupied()) {
+              $this->startupError = 'A llama.cpp portja foglalt, de nincs hozzá érvényes PID-fájl. A futó szervert előbb azonosítani kell.';
+              return false;
+          }
+          if (is_file($this->pidFile) && !@unlink($this->pidFile)) {
+              $this->startupError = 'A llama.cpp PID-fájlja nem törölhető.';
+              return false;
+          }
+          $this->modelId = null;
           return true;
       }
 
-      $pid = (int)trim((string)file_get_contents($this->pidFile));
-
-      if ($pid <= 0) {
-          @unlink($this->pidFile);
-          return true;
+      if (!$this->isManagedDirectProcess($pid)) {
+          $this->startupError = 'A PID-fájl nem a Mara által kezelhető llama-server folyamatra mutat.';
+          return false;
       }
-
-      if (!$this->processAlive($pid)) {
-          @unlink($this->pidFile);
-          return !$this->isDirectServerRunning();
-      }
-      // SIGTERM
-      if (!posix_kill($pid, 15)) {
+      if (!function_exists('posix_kill') || !@posix_kill($pid, 15)) {
+          $this->startupError = 'A llama.cpp folyamat nem állítható le.';
           return false;
       }
 
-      // Megvárjuk, amíg a llama-server ténylegesen eltűnik.
       $deadline = microtime(true) + $this->startupTimeout;
       while (microtime(true) < $deadline) {
-          usleep($this->startupPollMs * 1000);
-
-          if (!$this->isDirectServerRunning()) {
-              @unlink($this->pidFile);
+          if (!$this->processAlive($pid) && !$this->directPortOccupied()) {
+              if ((int)@file_get_contents($this->pidFile) === $pid &&
+                  !@unlink($this->pidFile)) {
+                  $this->startupError = 'A llama.cpp PID-fájlja nem törölhető.';
+                  return false;
+              }
               $this->modelId = null;
               return true;
           }
+          usleep($this->startupPollMs * 1000);
       }
-
+      $this->startupError = 'A llama.cpp leállítása túllépte a várakozási időt; a PID-fájlt megtartottam.';
       return false;
   }
 
