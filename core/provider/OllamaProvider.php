@@ -201,6 +201,19 @@ public function chat(
         unset($options[$key]);
     }
 
+    // Translate Mara's output-token limit to Ollama's native option.
+    if (array_key_exists('max_tokens', $options)) {
+        $options['num_predict'] = (int)$options['max_tokens'];
+    }
+
+    // These settings are handled by Mara or at the payload's top level.
+    foreach ([
+        'max_tokens', 'think', 'context_limit',
+        'capabilities', 'builtin_tools'
+    ] as $key) {
+        unset($options[$key]);
+    }
+
     if (!empty($options))
       {
         $payload['options'] = $options;
