@@ -247,3 +247,15 @@
   subject to AGPL notices and corresponding-source obligations.
 - Updated README and NOTICE; retained the previous license entry as history.
 
+
+## 2026-10-16 — Provider diagnostics and Ollama token limit
+
+- Mapped Mara's max_tokens setting to Ollama's options.num_predict.
+- Removed Mara-only settings from Ollama's sampling options.
+- Added an admin-only Ollama journal viewer through the restricted mara-service helper.
+- Added shared model communication logging for Ollama and llama.cpp, with request IDs, settings, raw responses, HTTP status, duration and errors.
+- Added log rotation at 5 MiB with three retained archives.
+- Replaced legacy provider debug output with the shared log.
+- Verified successful requests and raw response logging with both providers through the UI.
+- Error logging is implemented; failure paths have not yet been explicitly tested.
+

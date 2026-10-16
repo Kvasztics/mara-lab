@@ -513,13 +513,7 @@ private function ggufQuantization(int $fileType, string $filename): string
 
         $message = $response['choices'][0]['message'] ?? [];
 
-error_log(
-    'LLAMA RESPONSE MESSAGE: '.json_encode(
-        $response['choices'][0]['message'] ?? null,
-        JSON_UNESCAPED_UNICODE |
-        JSON_UNESCAPED_SLASHES
-    )
-);
+
 
         return new ProviderResponse(
             content: $message['content'] ?? '',
@@ -546,64 +540,96 @@ error_log(
         string $endpoint,
         ?array $payload = null
     ): array {
-        $curl = curl_init($this->baseUrl . $endpoint);
+        $tracked = $method === 'POST' && $endpoint === '/v1/chat/completions';
+        $requestId = uniqid('llamacpp-', true);
+        $started = microtime(true);
+        $curl = null;
+        $raw = null;
+        $status = 0;
+        $curlCode = 0;
+        $failure = null;
 
-        if ($curl === false) {
-            throw new RuntimeException(
-                'Nem sikerült inicializálni a cURL-t.'
-            );
+        if ($tracked) {
+            $settings = $payload ?? [];
+            unset($settings['messages']);
+            \mara\core\ModelCommunicationLog::write([
+                'event' => 'REQUEST',
+                'request_id' => $requestId,
+                'provider' => 'llamacpp',
+                'endpoint' => $endpoint,
+                'model' => $payload['model'] ?? null,
+                'settings' => $settings,
+                'message_count' => count($payload['messages'] ?? []),
+            ]);
         }
 
-        $options = [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CUSTOMREQUEST  => $method,
-            CURLOPT_HTTPHEADER     => [
-                'Content-Type: application/json',
-                'Accept: application/json',
-            ],
-            CURLOPT_CONNECTTIMEOUT => 2,
-            CURLOPT_TIMEOUT => $method === 'GET' && in_array($endpoint, ['/v1/models', '/health'], true) ? 2 : 600,
-        ];
+        try {
+            $curl = curl_init($this->baseUrl . $endpoint);
+            if ($curl === false) {
+                throw new \RuntimeException('Nem sikerült inicializálni a cURL-t.');
+            }
 
-        if ($payload !== null) {
-            $options[CURLOPT_POSTFIELDS] = json_encode(
-                $payload,
-                JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
-            );
+            $options = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CUSTOMREQUEST => $method,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                ],
+                CURLOPT_CONNECTTIMEOUT => 2,
+                CURLOPT_TIMEOUT => $method === 'GET' && in_array($endpoint, ['/v1/models', '/health'], true) ? 2 : 600,
+            ];
+
+            if ($payload !== null) {
+                $options[CURLOPT_POSTFIELDS] = json_encode(
+                    $payload,
+                    JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
+                );
+            }
+
+            if (!curl_setopt_array($curl, $options)) {
+                throw new \RuntimeException('A cURL beállítása sikertelen.');
+            }
+
+            $raw = curl_exec($curl);
+            $status = (int)curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+            $curlCode = curl_errno($curl);
+
+            if ($raw === false) {
+                throw new \RuntimeException(
+                    'Provider kapcsolat hiba: ' . curl_error($curl)
+                );
+            }
+            if ($status < 200 || $status >= 300) {
+                throw new \RuntimeException("Provider HTTP hiba: {$status}");
+            }
+
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            if (!is_array($decoded)) {
+                throw new \RuntimeException('Provider: nem megfelelő JSON-válasz.');
+            }
+            return $decoded;
+        } catch (\Throwable $error) {
+            $failure = $error->getMessage();
+            throw $error;
+        } finally {
+            if ($curl !== null && $curl !== false) {
+                curl_close($curl);
+            }
+            if ($tracked) {
+                \mara\core\ModelCommunicationLog::write([
+                    'event' => $failure === null ? 'RESPONSE' : 'ERROR',
+                    'request_id' => $requestId,
+                    'provider' => 'llamacpp',
+                    'model' => $payload['model'] ?? null,
+                    'http_status' => $status,
+                    'duration_seconds' => round(microtime(true) - $started, 3),
+                    'curl_errno' => $curlCode,
+                    'error' => $failure,
+                    'raw_response' => is_string($raw) ? $raw : null,
+                ]);
+            }
         }
-
-        curl_setopt_array($curl, $options);
-
-        $response = curl_exec($curl);
-
-        if ($response === false) {
-            $error = curl_error($curl);
-            curl_close($curl);
-
-            throw new RuntimeException(
-                'Provider kapcsolat hiba: ' . $error
-            );
-        }
-
-        $status = curl_getinfo(
-            $curl,
-            CURLINFO_RESPONSE_CODE
-        );
-
-        curl_close($curl);
-
-        if ($status < 200 || $status >= 300) {
-            throw new RuntimeException(
-                "Provider HTTP hiba: {$status}"
-            );
-        }
-
-        return json_decode(
-            $response,
-            true,
-            512,
-            JSON_THROW_ON_ERROR
-        );
     }
 	
     public function prepare(array $model): bool

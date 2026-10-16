@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-    echo 'Usage: mara-service start|stop|status SERVICE' >&2
+    echo 'Usage: mara-service start|stop|status SERVICE; mara-service logs ollama' >&2
     exit 2
 fi
 
@@ -31,6 +31,15 @@ case "$ACTION" in
     status)
         exec /usr/bin/systemctl is-active "$UNIT"
         ;;
+    logs)
+        if [[ "$UNIT" != ollama.service ]]; then
+            echo 'Log access is supported only for Ollama.' >&2
+            exit 2
+        fi
+        exec /usr/bin/journalctl --unit=ollama.service --boot=0 \
+            --lines=200 --no-pager --quiet --output=short-iso
+        ;;
+
     *)
         echo 'Unsupported action.' >&2
         exit 2
