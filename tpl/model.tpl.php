@@ -1272,6 +1272,17 @@
         </div>
     </div>
 
+    <?php if (($provider ?? '') === 'llamacpp'): ?>
+    <div style="display:flex;justify-content:flex-end;margin-top:20px">
+        <button type="submit"
+                name="restart_provider"
+                value="1"
+                class="btn">
+            Újraindítás
+        </button>
+    </div>
+    <?php endif; ?>
+
 </section>
 
 

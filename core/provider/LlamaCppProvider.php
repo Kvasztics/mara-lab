@@ -81,6 +81,71 @@ class LlamaCppProvider implements ProviderInterface
     $this->parallel       = (int)($config['parallel'] ?? 1);        
 	}
 
+    public function restart(array $model): bool
+    {
+        $this->startupError = '';
+        $this->launchedPid = 0;
+
+        try {
+            return $this->withDirectLock(function () use ($model): bool {
+                if ($this->mode === 'router') {
+                    if (!$this->stopDirectServer()) {
+                        return false;
+                    }
+
+                    $this->model = null;
+                    $this->modelId = null;
+
+                    if (!$this->startRouterServer()) {
+                        return false;
+                    }
+
+                    $modelId = (int)($model['id'] ?? 0);
+                    if ($modelId <= 0) {
+                        $this->startupError = 'Hiányzik a Mara modellazonosító.';
+                        return false;
+                    }
+
+                    $prepared = $this->prepareRouter($modelId);
+                    if ($prepared) {
+                        $this->model = $model;
+                    }
+
+                    return $prepared;
+                }
+
+                if ($this->mode === 'direct') {
+                    $baseModel = (string)($model['basemodel'] ?? '');
+                    $mmproj = (string)($model['mmproj'] ?? '');
+
+                    if ($baseModel === '') {
+                        $this->startupError = 'Hiányzik a llama.cpp modell.';
+                        return false;
+                    }
+
+                    $prepared = $this->prepareDirect(
+                        $baseModel,
+                        $mmproj,
+                        $model['parameters'] ?? [],
+                        true
+                    );
+
+                    if ($prepared) {
+                        $this->model = $model;
+                    }
+
+                    return $prepared;
+                }
+
+                $this->startupError = 'Ismeretlen llama.cpp működési mód.';
+                return false;
+            });
+        } catch (RuntimeException $error) {
+            $this->startupError = $error->getMessage();
+            return false;
+        }
+    }
+
     public function stop(): bool
     {
         $stopped = match ($this->mode) {

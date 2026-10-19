@@ -291,6 +291,36 @@ public function savemodel(): void
     if ($modelId !== false)
       {
         $_SESSION['message'] = LANG['MSG_SAVE_OK'];
+
+        if (isset($_POST['restart_provider']))
+          {
+            $model = $this->MOD->getById((int)$modelId);
+
+            if ($model && ($model['provider'] ?? '') === 'llamacpp')
+              {
+                try {
+                    $manager = new \mara\core\provider\ProviderManager();
+                    $provider = $manager->getProvider('llamacpp');
+
+                    if ($provider instanceof \mara\core\provider\LlamaCppProvider)
+                      {
+                        if ($provider->restart($model))
+                          {
+                            $_SESSION['message'] = 'A modell mentése és a llama.cpp újraindítása sikeres.';
+                          }
+                        else
+                          {
+                            $_SESSION['message'] = 'A modell mentve, de az újraindítás sikertelen: '
+                                .$provider->getStartupError();
+                          }
+                      }
+                } catch (\Throwable $error) {
+                    error_log('Mara model restart: '.$error->getMessage());
+                    $_SESSION['message'] = 'A modell mentve, de az újraindítás során hiba történt.';
+                }
+              }
+          }
+
         header('Location: '.DIR_HOST.'/main/models/'.$modelId);
         exit;
       }
