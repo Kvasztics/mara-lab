@@ -120,6 +120,13 @@ const voiceData = <?= json_encode(
                     value="<?php echo $llamacpp_model_dir; ?>"
                     placeholder="<?php echo LANG['SETTINGS_MODEL_URL_PH']; ?>">
                 </div>
+                <div class="settings-field">
+                  <label for="llamacpp_mode">Llama.cpp működési mód</label>
+                  <select id="llamacpp_mode" name="llamacpp_mode">
+                    <option value="direct">Direct</option>
+                    <option value="router">Router</option>
+                  </select>
+                </div>
               </div>
 
               <div class="settings-provider-actions">

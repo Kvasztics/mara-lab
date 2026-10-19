@@ -133,6 +133,13 @@
                     RAG
                 </button>
 
+                <button
+                    type="button"
+                    class="settings-tab"
+                    data-model-tab="runtime">
+                    <?php echo LANG['MODEL_TAB_RUNTIME']; ?>
+                </button>
+
             </nav>
 
 
@@ -1194,6 +1201,77 @@
         </div>
 
     </div>
+</section>
+
+
+            <!-- ==================================================
+                 RUNTIME
+                 ================================================== -->
+
+<section
+    class="model-tab-panel"
+    data-model-panel="runtime"
+    hidden>
+
+    <div class="settings-section">
+        <div class="settings-section-title">
+            <h2><?php echo LANG['MODEL_TAB_RUNTIME']; ?></h2>
+            <p><?php echo LANG['MODEL_RUNTIME_HELP']; ?></p>
+        </div>
+        <?php $runtime = is_array($parameters['runtime'] ?? null)
+            ? $parameters['runtime'] : []; ?>
+        <div class="model-parameters-grid">
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-gpu_layers"><?php echo LANG['MODEL_RUNTIME_GPU_LAYERS']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_GPU_LAYERS_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-gpu_layers"
+                       name="runtime_gpu_layers" min="0" max="999" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['gpu_layers'] ?? 99), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-batch_size"><?php echo LANG['MODEL_RUNTIME_BATCH_SIZE']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_BATCH_SIZE_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-batch_size"
+                       name="runtime_batch_size" min="1" max="8192" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['batch_size'] ?? 128), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-ubatch_size"><?php echo LANG['MODEL_RUNTIME_UBATCH_SIZE']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_UBATCH_SIZE_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-ubatch_size"
+                       name="runtime_ubatch_size" min="1" max="8192" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['ubatch_size'] ?? 128), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-threads"><?php echo LANG['MODEL_RUNTIME_THREADS']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_THREADS_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-threads"
+                       name="runtime_threads" min="-1" max="256" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['threads'] ?? -1), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-threads_batch"><?php echo LANG['MODEL_RUNTIME_THREADS_BATCH']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_THREADS_BATCH_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-threads_batch"
+                       name="runtime_threads_batch" min="-1" max="256" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['threads_batch'] ?? -1), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-n_cpu_moe"><?php echo LANG['MODEL_RUNTIME_N_CPU_MOE']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_N_CPU_MOE_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-n_cpu_moe"
+                       name="runtime_n_cpu_moe" min="0" max="999" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['n_cpu_moe'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-n_cpu_ffn"><?php echo LANG['MODEL_RUNTIME_N_CPU_FFN']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_N_CPU_FFN_HELP']; ?></span></div><input type="number" class="range-number" id="runtime-n_cpu_ffn"
+                       name="runtime_n_cpu_ffn" min="0" max="999" step="1"
+                       value="<?php echo htmlspecialchars((string)($runtime['n_cpu_ffn'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>"></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-flash_attn"><?php echo LANG['MODEL_RUNTIME_FLASH_ATTN']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_FLASH_ATTN_HELP']; ?></span></div><div class="range-number" style="width:auto;min-width:95px;padding:0;display:flex;align-items:center"><select id="runtime-flash_attn" name="runtime_flash_attn">
+                    <option value="auto" <?php echo (($runtime['flash_attn'] ?? 'auto') === 'auto') ? 'selected' : ''; ?>>auto</option>
+                    <option value="on" <?php echo (($runtime['flash_attn'] ?? 'auto') === 'on') ? 'selected' : ''; ?>>on</option>
+                    <option value="off" <?php echo (($runtime['flash_attn'] ?? 'auto') === 'off') ? 'selected' : ''; ?>>off</option>
+                </select></div></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-cache_type_k"><?php echo LANG['MODEL_RUNTIME_CACHE_TYPE_K']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_CACHE_TYPE_K_HELP']; ?></span></div><div class="range-number" style="width:auto;min-width:95px;padding:0;display:flex;align-items:center"><select id="runtime-cache_type_k" name="runtime_cache_type_k">
+                    <option value="f32" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'f32') ? 'selected' : ''; ?>>f32</option>
+                    <option value="f16" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'f16') ? 'selected' : ''; ?>>f16</option>
+                    <option value="bf16" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'bf16') ? 'selected' : ''; ?>>bf16</option>
+                    <option value="q8_0" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'q8_0') ? 'selected' : ''; ?>>q8_0</option>
+                    <option value="q4_0" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'q4_0') ? 'selected' : ''; ?>>q4_0</option>
+                    <option value="q4_1" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'q4_1') ? 'selected' : ''; ?>>q4_1</option>
+                    <option value="q5_0" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'q5_0') ? 'selected' : ''; ?>>q5_0</option>
+                    <option value="q5_1" <?php echo (($runtime['cache_type_k'] ?? 'f16') === 'q5_1') ? 'selected' : ''; ?>>q5_1</option>
+                </select></div></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-cache_type_v"><?php echo LANG['MODEL_RUNTIME_CACHE_TYPE_V']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_CACHE_TYPE_V_HELP']; ?></span></div><div class="range-number" style="width:auto;min-width:95px;padding:0;display:flex;align-items:center"><select id="runtime-cache_type_v" name="runtime_cache_type_v">
+                    <option value="f32" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'f32') ? 'selected' : ''; ?>>f32</option>
+                    <option value="f16" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'f16') ? 'selected' : ''; ?>>f16</option>
+                    <option value="bf16" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'bf16') ? 'selected' : ''; ?>>bf16</option>
+                    <option value="q8_0" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'q8_0') ? 'selected' : ''; ?>>q8_0</option>
+                    <option value="q4_0" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'q4_0') ? 'selected' : ''; ?>>q4_0</option>
+                    <option value="q4_1" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'q4_1') ? 'selected' : ''; ?>>q4_1</option>
+                    <option value="q5_0" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'q5_0') ? 'selected' : ''; ?>>q5_0</option>
+                    <option value="q5_1" <?php echo (($runtime['cache_type_v'] ?? 'f16') === 'q5_1') ? 'selected' : ''; ?>>q5_1</option>
+                </select></div></div></div>
+            <div class="parameter-item"><div class="parameter-header" style="margin-bottom:0"><div><label for="runtime-cpu_moe"><?php echo LANG['MODEL_RUNTIME_CPU_MOE']; ?></label><span class="parameter-help"><?php echo LANG['MODEL_RUNTIME_CPU_MOE_HELP']; ?></span></div><input type="hidden" name="runtime_cpu_moe_present" value="1"><label class="switch" for="runtime-cpu-moe"><input type="checkbox" id="runtime-cpu-moe" name="runtime_cpu_moe" value="1"
+                        <?php echo !empty($runtime['cpu_moe']) ? 'checked' : ''; ?>><span class="switch-slider"></span></label></div></div>
+        </div>
+    </div>
+
 </section>
 
 

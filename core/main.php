@@ -529,8 +529,20 @@ public function settingssave($var = []): void
               {
                 continue;
              }
-            foreach ($settings as $key => $value) 
+            foreach ($settings as $key => $value)
               {
+                if ($provider === 'llamacpp' && $key === 'mode') {
+                    if (!is_string($value) ||
+                        !in_array($value, ['direct', 'router'], true)) {
+                        http_response_code(400);
+                        exit('Invalid llama.cpp mode.');
+                    }
+                }
+
+                if (!is_scalar($value)) {
+                    continue;
+                }
+
                 $this->SET->setValue(
                     $provider,
                     (string) $key,

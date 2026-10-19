@@ -84,7 +84,7 @@ class LlamaCppProvider implements ProviderInterface
     public function stop(): bool
     {
         $stopped = match ($this->mode) {
-            'direct' => $this->withDirectLock(fn(): bool => $this->stopDirectServer()),
+            'direct', 'router' => $this->withDirectLock(fn(): bool => $this->stopDirectServer()),
             default  => false,
         };
 
@@ -653,7 +653,7 @@ private function ggufQuantization(int $fileType, string $filename): string
         try {
         $prepared = match ($this->mode) {
             'direct' => $this->withDirectLock(fn(): bool => $this->prepareDirect($baseModel, $mmproj, $model['parameters'] ?? [])),
-            'router' => $this->prepareRouter($baseModel),
+            'router' => $this->withDirectLock(fn(): bool => $this->prepareRouter((int)($model['id'] ?? 0))),
             default  => false,
         };
         } catch (RuntimeException $error) {
@@ -682,24 +682,48 @@ private function ggufQuantization(int $fileType, string $filename): string
         return true;
     }
 
-	private function prepareRouter(string $baseModel): bool
-	{
-		if (!$this->loadModel($baseModel)) {
-			$this->modelId = null;
-			return false;
-		}
+	private function prepareRouter(int $maraModelId): bool
+{
+    $pid = (int)trim((string)@file_get_contents($this->pidFile));
+    $runningMode = $this->managedProcessMode($pid);
 
-		$model = $this->resolveModel($baseModel);
+    if ($runningMode === 'direct') {
+        if (!$this->stopDirectServer()) {
+            $this->modelId = null;
+            return false;
+        }
+        $runningMode = null;
+    }
 
-		if ($model === null) {
-			$this->modelId = null;
-			return false;
-		}
+    if ($runningMode !== 'router') {
+        if (!$this->stopDirectServer()) {
+            $this->modelId = null;
+            return false;
+        }
 
-		$this->modelId = $model['id'];
+        if (!$this->startRouterServer()) {
+            $this->modelId = null;
+            return false;
+        }
+    }
 
-		return true;
-	}
+    $routerModel = \mara\core\LlamaRouterPreset::modelName($maraModelId);
+
+    if (!$this->loadModel($routerModel)) {
+        $this->modelId = null;
+        return false;
+    }
+
+    $model = $this->resolveModel($routerModel);
+
+    if ($model === null) {
+        $this->modelId = null;
+        return false;
+    }
+
+    $this->modelId = $model['id'];
+    return true;
+}
 
 
     /** Serialize lifecycle operations across PHP workers. */
@@ -741,23 +765,118 @@ private function ggufQuantization(int $fileType, string $filename): string
         return true;
     }
 
-    private function isManagedDirectProcess(int $pid): bool
+    /**
+     * Identify a Mara-managed llama-server process.
+     *
+     * Returns 'direct', 'router', or null.
+     */
+    private function managedProcessMode(int $pid): ?string
     {
+        if ($pid <= 0 || !$this->processAlive($pid)) {
+            return null;
+        }
+
+        $storedPid = (int)trim(
+            (string)@file_get_contents($this->pidFile)
+        );
+
+        if ($storedPid !== $pid) {
+            return null;
+        }
+
         $command = @file_get_contents('/proc/'.$pid.'/cmdline');
-        if (!is_string($command) || $command === '') return false;
+
+        if (!is_string($command) || $command === '') {
+            return null;
+        }
+
         $args = explode("\0", rtrim($command, "\0"));
+
         $actualBinary = realpath($args[0] ?? '');
         $expectedBinary = realpath($this->binary);
+
+        if ($expectedBinary === false ||
+            $actualBinary !== $expectedBinary) {
+            return null;
+        }
+
+        if (!function_exists('posix_geteuid') ||
+            @fileowner('/proc/'.$pid) !== posix_geteuid()) {
+            return null;
+        }
+
         $portIndex = array_search('--port', $args, true);
-        return $expectedBinary !== false &&
-            $actualBinary === $expectedBinary &&
-            $portIndex !== false &&
-            ($args[$portIndex + 1] ?? '') ===
-                (string)parse_url($this->baseUrl, PHP_URL_PORT) &&
-            function_exists('posix_geteuid') &&
-            @fileowner('/proc/'.$pid) === posix_geteuid();
+
+        if ($portIndex === false ||
+            ($args[$portIndex + 1] ?? '') !==
+                (string)parse_url($this->baseUrl, PHP_URL_PORT)) {
+            return null;
+        }
+
+        $direct = in_array('--model', $args, true);
+        $router = in_array('--models-dir', $args, true);
+
+        if ($direct === $router) {
+            return null;
+        }
+
+        return $direct ? 'direct' : 'router';
     }
 
+    private function isManagedDirectProcess(int $pid): bool
+    {
+        return $this->managedProcessMode($pid) === 'direct';
+    }
+
+private function runtimeOptions(array $parameters): array
+{
+    $runtime = $parameters['runtime'] ?? [];
+
+    if (!is_array($runtime)) {
+        $runtime = [];
+    }
+
+    $integer = static function (
+        string $key,
+        int $default,
+        int $min,
+        int $max
+    ) use ($runtime): int {
+        $value = $runtime[$key] ?? $default;
+
+        return max($min, min($max, (int)$value));
+    };
+
+    $choice = static function (
+        string $key,
+        string $default,
+        array $allowed
+    ) use ($runtime): string {
+        $value = $runtime[$key] ?? $default;
+
+        return is_string($value) && in_array($value, $allowed, true)
+            ? $value
+            : $default;
+    };
+
+    return [
+        'gpu_layers'    => $integer('gpu_layers', $this->gpuLayers, 0, 999),
+        'batch_size'    => $integer('batch_size', 128, 1, 8192),
+        'ubatch_size'   => $integer('ubatch_size', 128, 1, 8192),
+        'threads'       => $integer('threads', -1, -1, 256),
+        'threads_batch' => $integer('threads_batch', -1, -1, 256),
+        'flash_attn'    => $choice('flash_attn', 'auto', ['on', 'off', 'auto']),
+        'cache_type_k'  => $choice('cache_type_k', 'f16', [
+            'f32', 'f16', 'bf16', 'q8_0', 'q4_0', 'q4_1', 'q5_0', 'q5_1',
+        ]),
+        'cache_type_v'  => $choice('cache_type_v', 'f16', [
+            'f32', 'f16', 'bf16', 'q8_0', 'q4_0', 'q4_1', 'q5_0', 'q5_1',
+        ]),
+        'cpu_moe'       => !empty($runtime['cpu_moe']),
+        'n_cpu_moe'     => $integer('n_cpu_moe', 0, 0, 999),
+        'n_cpu_ffn'     => $integer('n_cpu_ffn', 0, 0, 999),
+    ];
+}    
 
     private function directConfigurationMatches(
         string $baseModel,
@@ -791,25 +910,88 @@ private function ggufQuantization(int $fileType, string $filename): string
             }
         }
 
+        $runtime = $this->runtimeOptions($parameters);
+
+        
+
+        // CPU-szálak: automatikus módban egyik kapcsoló sem szerepel.
+        foreach ([
+            '--threads' => $runtime['threads'],
+            '--threads-batch' => $runtime['threads_batch'],
+        ] as $flag => $expected) {
+            if ($expected > 0) {
+                if ($value($flag) !== (string)$expected) {
+                    return false;
+                }
+            } elseif (in_array($flag, $args, true)) {
+                return false;
+            }
+        }
+
+        // A CPU-offload kapcsolókat is ellenőrizni kell.
+        $hasFlag = static fn(string $flag): bool =>
+            in_array($flag, $args, true);
+
+        if ($hasFlag('--cpu-moe') !== $runtime['cpu_moe']) {
+            return false;
+        }
+
+        $expectedMoeLayers = $runtime['cpu_moe']
+            ? 0
+            : $runtime['n_cpu_moe'];
+
+        if ($expectedMoeLayers > 0) {
+            if ($value('--n-cpu-moe') !== (string)$expectedMoeLayers) {
+                return false;
+            }
+        } elseif ($hasFlag('--n-cpu-moe')) {
+            return false;
+        }
+
+        if ($runtime['n_cpu_ffn'] > 0) {
+            if ($value('--n-cpu-ffn') !== (string)$runtime['n_cpu_ffn']) {
+                return false;
+            }
+        } elseif ($hasFlag('--n-cpu-ffn')) {
+            return false;
+        }
+
         $context = max(512, (int)($parameters['num_ctx'] ?? 4096))
             * max(1, $this->parallel);
-        return $value('--ctx-size') === (string)$context &&
+
+        return
+            $value('--ctx-size') === (string)$context &&
             $value('--parallel') === (string)$this->parallel &&
-            $value('--n-gpu-layers') === (string)$this->gpuLayers;
+            $value('--n-gpu-layers') === (string)$runtime['gpu_layers'] &&
+            $value('--batch-size') === (string)$runtime['batch_size'] &&
+            $value('--flash-attn') === $runtime['flash_attn'] &&
+            $value('--cache-type-k') === $runtime['cache_type_k'] &&
+            $value('--cache-type-v') === $runtime['cache_type_v'] &&
+            $value('--ubatch-size') === (string)min(
+                $runtime['ubatch_size'],
+                $runtime['batch_size']
+            );
     }
 
 private function prepareDirect(
     string $baseModel,
     string $mmproj = '',
-    array $parameters = []
+    array $parameters = [],
+    bool $forceRestart = false
 ): bool
 {
       $modelId = pathinfo($baseModel, PATHINFO_FILENAME);
 
       // Már fut, és pontosan a kívánt modell van betöltve.
-      $runningModel = $this->getDirectModel();
+      $pid = (int)trim((string)@file_get_contents($this->pidFile));
+      $runningMode = $this->managedProcessMode($pid);
 
-      if ($runningModel === $modelId &&
+      $runningModel = $runningMode === 'direct'
+          ? $this->getDirectModel()
+          : null;
+
+      if (!$forceRestart &&
+          $runningModel === $modelId &&
           $this->directConfigurationMatches($baseModel, $mmproj, $parameters)) {
           $this->modelId = $modelId;
           return true;
@@ -861,6 +1043,132 @@ private function prepareDirect(
 		}
 	}	
 	
+private function waitForRouter(): bool
+{
+    $deadline = microtime(true) + $this->startupTimeout;
+
+    while (microtime(true) < $deadline) {
+        if (!$this->processAlive($this->launchedPid)) {
+            return $this->startupFailure(
+                LANG['LLAMA_ROUTER_EXITED']
+            );
+        }
+
+        try {
+            $response = $this->models();
+
+            if (isset($response['data']) && is_array($response['data'])) {
+                return true;
+            }
+        } catch (\Throwable) {
+            // A router még indulhat.
+        }
+
+        usleep($this->startupPollMs * 1000);
+    }
+
+    return $this->startupFailure(
+        sprintf(LANG['LLAMA_ROUTER_TIMEOUT'], $this->startupTimeout)
+    );
+}
+
+private function startRouterServer(): bool
+{
+    if ($this->directPortOccupied()) {
+        throw new RuntimeException(
+            LANG['LLAMA_ROUTER_PORT_BUSY']
+        );
+    }
+
+    if ($this->binary === '' ||
+        !is_file($this->binary) ||
+        !is_executable($this->binary)) {
+        throw new RuntimeException(
+            sprintf(LANG['LLAMA_ROUTER_BINARY_INVALID'], $this->binary)
+        );
+    }
+
+    if ($this->modelDir === '' || !is_dir($this->modelDir) ||
+        !is_readable($this->modelDir)) {
+        throw new RuntimeException(
+            sprintf(LANG['LLAMA_ROUTER_MODEL_DIR_INVALID'], $this->modelDir)
+        );
+    }
+
+    $presetFile = dirname($this->pidFile) . '/llama-router.ini';
+
+    (new \mara\core\LlamaRouterPreset())->generate(
+        $presetFile,
+        $this->modelDir
+    );
+
+    clearstatcache(true, $this->logFile);
+    $this->startupLogOffset = is_file($this->logFile)
+        ? (int)filesize($this->logFile) : 0;
+
+    $command = [
+        $this->binary,
+        '--host', '127.0.0.1',
+        '--port', (string)parse_url($this->baseUrl, PHP_URL_PORT),
+        '--models-dir', $this->modelDir,
+        '--models-preset', $presetFile,
+        '--models-max', '1',
+        '--no-models-autoload',
+    ];
+
+    $shellCommand = implode(' ', array_map('escapeshellarg', $command));
+
+    $launcher = [
+        '/bin/sh',
+        '-c',
+        $shellCommand
+            . ' >> ' . escapeshellarg($this->logFile)
+            . ' 2>&1 < /dev/null & echo $!'
+    ];
+
+    $descriptors = [
+        0 => ['file', '/dev/null', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['file', $this->logFile, 'a'],
+    ];
+
+    $process = proc_open(
+        $launcher,
+        $descriptors,
+        $pipes,
+        dirname($this->binary, 3)
+    );
+
+    if (!is_resource($process)) {
+        return $this->startupFailure(
+            LANG['LLAMA_ROUTER_START_FAILED']
+        );
+    }
+
+    $pid = (int)trim(stream_get_contents($pipes[1]));
+    fclose($pipes[1]);
+    proc_close($process);
+
+    if ($pid <= 0) {
+        return $this->startupFailure(
+            LANG['LLAMA_ROUTER_PROCESS_FAILED']
+        );
+    }
+
+    $this->launchedPid = $pid;
+
+    if (@file_put_contents($this->pidFile, (string)$pid, LOCK_EX) === false) {
+        if ($this->processAlive($pid) && function_exists('posix_kill')) {
+            @posix_kill($pid, 15);
+        }
+        return $this->startupFailure(
+            LANG['LLAMA_ROUTER_PID_FAILED']
+        );
+    }
+
+    return $this->waitForRouter();
+}
+
 private function startDirectServer(
     string $baseModel,
     string $mmproj = '',
@@ -903,21 +1211,50 @@ private function startDirectServer(
         }
     }    
 
+    $runtime = $this->runtimeOptions($parameters);
+
     $command = [
         $this->binary,
         '--host', '127.0.0.1',
         '--port', (string) parse_url($this->baseUrl, PHP_URL_PORT),
         '--alias', $modelId,
         '--model', $modelFile,
-        '--n-gpu-layers', (string) $this->gpuLayers,
+        '--n-gpu-layers', (string) $runtime['gpu_layers'],
         '--parallel', (string) $this->parallel,
         '--ctx-size', (string)(max(512, (int)($parameters['num_ctx'] ?? 4096)) * max(1, $this->parallel)),
-        '--batch-size', '128',
-        '--ubatch-size', '128',
+        '--batch-size', (string) $runtime['batch_size'],
+        '--ubatch-size', (string) min($runtime['ubatch_size'], $runtime['batch_size']),
+        '--flash-attn', $runtime['flash_attn'],
+        '--cache-type-k', $runtime['cache_type_k'],
+        '--cache-type-v', $runtime['cache_type_v'],
         '--chat-template-kwargs', json_encode([
             'enable_thinking' => filter_var($parameters['think'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ], JSON_THROW_ON_ERROR),
     ];
+
+    // CPU-szálak: -1 esetén a llama.cpp automatikus értéke.
+    if ($runtime['threads'] > 0) {
+        $command[] = '--threads';
+        $command[] = (string)$runtime['threads'];
+    }
+
+    if ($runtime['threads_batch'] > 0) {
+        $command[] = '--threads-batch';
+        $command[] = (string)$runtime['threads_batch'];
+    }
+
+    // CPU/MoE offload: teljes vagy részleges MoE, de nem mindkettő.
+    if ($runtime['cpu_moe']) {
+        $command[] = '--cpu-moe';
+    } elseif ($runtime['n_cpu_moe'] > 0) {
+        $command[] = '--n-cpu-moe';
+        $command[] = (string)$runtime['n_cpu_moe'];
+    }
+
+    if ($runtime['n_cpu_ffn'] > 0) {
+        $command[] = '--n-cpu-ffn';
+        $command[] = (string)$runtime['n_cpu_ffn'];
+    }
 
     if ($mmprojFile !== null) {
         $command[] = '--mmproj';
@@ -1006,7 +1343,7 @@ private function startDirectServer(
           return true;
       }
 
-      if (!$this->isManagedDirectProcess($pid)) {
+      if ($this->managedProcessMode($pid) === null) {
           $this->startupError = 'A PID-fájl nem a Mara által kezelhető llama-server folyamatra mutat.';
           return false;
       }

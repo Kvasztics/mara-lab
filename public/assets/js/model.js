@@ -189,6 +189,27 @@ document.addEventListener('DOMContentLoaded', () =>
           }
       };
 
+    // Runtime tab: currently supported by llama.cpp.
+    const runtimeTab = document.querySelector('[data-model-tab="runtime"]');
+    const runtimePanel = document.querySelector('[data-model-panel="runtime"]');
+    const generalTab = document.querySelector('[data-model-tab="general"]');
+
+    const updateRuntimeTab = () => {
+      if (!runtimeTab || !runtimePanel) return;
+
+      const supported = provider.value === 'llamacpp';
+      runtimeTab.hidden = !supported;
+
+      if (!supported && runtimeTab.classList.contains('active')) {
+        if (generalTab) generalTab.click();
+      }
+
+      if (!supported) runtimePanel.hidden = true;
+    };
+
+    updateRuntimeTab();
+    provider.addEventListener('change', updateRuntimeTab);
+
     provider.addEventListener('change', async () =>
       {
         const selectedProvider = provider.value;

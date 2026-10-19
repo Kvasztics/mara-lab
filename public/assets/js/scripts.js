@@ -328,6 +328,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const llamaModelDir =
         document.getElementById('llamacpp_model_dir');
 
+    const llamaMode =
+        document.getElementById('llamacpp_mode');
+
     const testButton =
         document.getElementById('provider-test');
 
@@ -360,6 +363,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (llamaModelDir) {
             llamaModelDir.value = data.model_dir || '';
         }
+
+        if (llamaMode) {
+            llamaMode.value = data.mode === 'router'
+                ? 'router' : 'direct';
+        }
     }
 
 
@@ -381,6 +389,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (currentProvider === 'llamacpp' && llamaModelDir) {
             providerData[currentProvider].model_dir =
                 llamaModelDir.value;
+        }
+
+        if (currentProvider === 'llamacpp' && llamaMode) {
+            providerData[currentProvider].mode =
+                llamaMode.value;
         }
 
         if (providerDataInput) {
