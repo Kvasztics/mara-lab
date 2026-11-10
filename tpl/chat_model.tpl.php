@@ -1,4 +1,5 @@
-<div class="message-row model" data-message-id="<?= (int)($id ?? 0) ?>">
+<div class="message-row model" data-message-id="<?= (int)($id ?? 0) ?>"
+     data-message-version="<?= hash('sha256', (string)$message) ?>">
 
     <div class="message-body<?php echo !empty($image) ? ' message-with-image' : ''; ?>">
 
@@ -16,7 +17,7 @@
 
         <div class="message-content-column">
 
-            <div class="model-message-content"><?php echo $message; ?></div>
+            <div class="model-message-content"><?= htmlspecialchars((string)$message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
 
             <div class="message-actions">
                 <button type="button" class="message-action" disabled
@@ -24,9 +25,15 @@
                         data-csrf="<?= htmlspecialchars((string)($_SESSION['chat_turn_csrf'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                         title="<?= htmlspecialchars(LANG['CHAT_TURN_REGENERATE'], ENT_QUOTES, 'UTF-8') ?>"
                         aria-label="<?= htmlspecialchars(LANG['CHAT_TURN_REGENERATE'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= $this->icon('regenerate') ?>
+                </button>
+                <button type="button" class="message-action" hidden disabled
+                        data-message-action="edit"
+                        data-csrf="<?= htmlspecialchars((string)($_SESSION['chat_turn_csrf'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        title="<?= htmlspecialchars(LANG['CHAT_TURN_EDIT'], ENT_QUOTES, 'UTF-8') ?>"
+                        aria-label="<?= htmlspecialchars(LANG['CHAT_TURN_EDIT'], ENT_QUOTES, 'UTF-8') ?>">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-                        <path d="M20 7v5h-5M4 17v-5h5"/>
-                        <path d="M6.1 7a7 7 0 0 1 11.5-1L20 9M4 15l2.4 3A7 7 0 0 0 17.9 17"/>
+                        <path d="m13.5 6.5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z"/>
                     </svg>
                 </button>
                 <button type="button" class="message-action" disabled

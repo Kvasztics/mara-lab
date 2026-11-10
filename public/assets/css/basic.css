@@ -894,6 +894,10 @@ img {
     justify-content: flex-end;
 }
 
+.message-actions:has(.message-rating.has-rating) {
+    opacity: 1;
+}
+
 .message-action-button {
     display: inline-flex;
     align-items: center;
@@ -3089,6 +3093,47 @@ img {
 .message-action svg {
     width: 14px;
     height: 14px;
+}
+
+.message-action[hidden] {
+    display: none;
+}
+
+.chat-reply-editor {
+    width: min(680px, calc(100% - 32px));
+    box-sizing: border-box;
+    padding: 20px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+}
+
+.chat-reply-editor::backdrop {
+    background: rgb(0 0 0 / 45%);
+}
+
+.chat-reply-editor textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 10px 0;
+    padding: 8px;
+    font: inherit;
+    resize: vertical;
+}
+
+.chat-reply-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.chat-reply-error {
+    color: #a12626;
+}
+
+.message-rating.has-rating svg {
+    color: #000;
+    fill: currentColor;
 }
 
 .composer-action svg,

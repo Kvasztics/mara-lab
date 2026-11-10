@@ -14,6 +14,7 @@ namespace mara\core;
 **------------------------------------------------------------------------------*/
 use mara\database\mModels;
 use mara\database\mPsyche;
+use mara\database\Database;
 use mara\core\Template;
 
 final class Models
@@ -38,7 +39,7 @@ public function __construct()
  * @param int $id
  * @return array
  */
-public function getById(int $id): ?array
+public function getById(int $id, bool $includePsycheHistory = false): ?array
   {
     $model = $this->repository->getById($id);
 
@@ -73,13 +74,14 @@ public function getById(int $id): ?array
       {
         $model['psyche_data'] = array_shift($records);
 
-        foreach ($records as $record)
-          {
-            $model['past'][] = [
-              'id'     => (int)$record['id'],
-              'modify' => $record['prompt_modify']
-            ];
-          }
+        if ($includePsycheHistory && (User::isAdmin() || (int)$model['user_id'] === User::id())) {
+            $model['past'] = $records;
+        } else {
+            $model['past'] = array_map(static fn(array $record): array => [
+                'id' => (int)$record['id'],
+                'modify' => $record['prompt_modify'],
+            ], $records);
+        }
       }
 
     return $model;
@@ -517,56 +519,47 @@ public function save(array $input, ?string $cardData = null): int|false
       'rag_ids'        => json_encode($ragIds)
     ];
 
-  if ($isNew)
-    {
-      $modelId = $this->repository->insert($data);
-
-      if ($modelId <= 0)
-        {
-          return false;
-        }
-    }
-  elseif (!$this->repository->update($modelId, $data))
-    {
-      return false;
+    // Character-card import already wraps this call in a transaction.
+    if ($cardData !== null || !isset($input['psyche'])) {
+        return $this->persistModel($modelId, $data, $input);
     }
 
-  /*
-  * Psyche
-  */
-  if (isset($input['psyche']))
-    {
-      $psychePrompt = (string)($input['psyche_prompt'] ?? '');
-      $psycheMemory = (string)($input['psyche_memory'] ?? '');
-      $psycheReason = (string)($input['psyche_reason'] ?? '');
+    $db = Database::getInstance()->getConnection();
+    if (!$db->begin_transaction()) return false;
+    $committed = false;
+    try {
+        $savedId = $this->persistModel($modelId, $data, $input);
+        if ($savedId === false) return false;
+        $committed = $db->commit();
+        return $committed ? $savedId : false;
+    } finally {
+        if (!$committed) $db->rollback();
+    }
+  }
 
-      if ($isNew || isset($input['psyche_insert']))
-        {
-          if (!$this->psyche->insert(
-            $modelId,
-            $psychePrompt,
-            $psycheMemory,
-            $psycheReason
-          ))
-            {
-              return false;
-            }
-        }
-      else
-        {
-          if (!$this->psyche->updateLatest(
-            $modelId,
-            $psychePrompt,
-            $psycheMemory,
-            $psycheReason
-          ))
-            {
-              return false;
-            }
-        }
+private function persistModel(int $modelId, array $data, array $input): int|false
+  {
+    $isNew = $modelId <= 0;
+    if ($isNew) {
+        $modelId = $this->repository->insert($data);
+        if ($modelId <= 0) return false;
+    } elseif (!$this->repository->update($modelId, $data)) {
+        return false;
     }
 
-  return $modelId;
+    if (isset($input['psyche']) && !$this->psyche->saveSelection(
+        $modelId,
+        (int)($input['psyche_id'] ?? 0),
+        (string)($input['psyche_version'] ?? ''),
+        $isNew || isset($input['psyche_insert']),
+        (string)($input['psyche_prompt'] ?? ''),
+        (string)($input['psyche_memory'] ?? ''),
+        (string)($input['psyche_reason'] ?? '')
+    )) {
+        return false;
+    }
+
+    return $modelId;
   }
 /** True only for capabilities discovered for this exact base model/projector. */
 public static function hasCachedCapabilities(array $model): bool

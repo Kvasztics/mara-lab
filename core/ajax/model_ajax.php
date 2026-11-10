@@ -113,7 +113,10 @@ public function providermodels(): void
 
         echo json_encode([
           'success' => true,
-          'models'  => $models
+          'models'  => $models,
+          'mmproj_options' => $provider === 'llamacpp'
+              ? $providers->getLlamaCppMmprojOptions()
+              : []
         ], JSON_UNESCAPED_UNICODE);
       }
     catch (\Throwable $exception)

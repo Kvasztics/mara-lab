@@ -766,7 +766,7 @@ document.addEventListener("DOMContentLoaded", () => { activeModelSelection = doc
 async function changeModel(modelId)
   {
     const selector = document.getElementById('model_list');
-    if (chatSending || attachmentUploading || modelChanging) {
+    if (chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) {
         if (selector && activeModelSelection !== null) selector.value = activeModelSelection;
         return;
     }
@@ -823,9 +823,16 @@ async function changeModel(modelId)
       }
   }
 
+let chatChanging = false;
+let newChatStarting = false;
+
 async function changeChat(chatId)
   {
-    if (chatSending || attachmentUploading) { return; }
+    const messages = document.getElementById('chat_messages');
+    if (!messages || chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) {
+        return;
+    }
+    chatChanging = true;
     clearAttachment();
 
     showLoader();
@@ -843,26 +850,16 @@ async function changeChat(chatId)
 
         const result = await response.json();
 
-        if (!result.success)
+        if (!response.ok || !result.success || typeof result.messages !== 'string')
           {
             return;
           }
 
-        const messages = document.getElementById('chat_messages');
-        const input    = document.getElementById('chat_message');
+        messages.innerHTML = result.messages;
+        messages.querySelectorAll('.model-message-content').forEach(renderCode);
+        messages.scrollTop = messages.scrollHeight;
 
-        if (messages)
-          {
-            messages.innerHTML = result.messages;
-            messages
-              .querySelectorAll('.model-message-content')
-              .forEach(function(element)
-                {
-                  renderCode(element);
-                });
-            messages.scrollTop = messages.scrollHeight;
-          }
-
+        const input = document.getElementById('chat_message');
         if (input)
           {
             input.value = '';
@@ -883,15 +880,14 @@ async function changeChat(chatId)
       }
     finally
       {
+        chatChanging = false;
         hideLoader();
       }
   }
 
-let newChatStarting = false;
-
-async function newChat()
+async function newChat({navigate = true} = {})
   {
-    if (chatSending || attachmentUploading || modelChanging || newChatStarting) {
+    if (chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) {
         return;
     }
     newChatStarting = true;
@@ -919,6 +915,10 @@ async function newChat()
         }
 
         const messages = document.getElementById('chat_messages');
+        if (!messages && navigate) {
+            window.location.assign('/main/view');
+            return;
+        }
         const input = document.getElementById('chat_message');
 
         document.querySelectorAll('.chat-item.active').forEach((item) => {
@@ -1102,7 +1102,7 @@ async function deleteChat(chatId, item)
 
         if (result.was_active)
           {
-            newChat();
+            newChat({navigate: false});
           }
       }
     catch (error)
@@ -1179,7 +1179,7 @@ function setStatus(message = '')
 
 async function sendMessage()
   {
-    if (chatSending || attachmentUploading) { return; }
+    if (chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) { return; }
 
     const input    = document.getElementById('chat_message');
     const messages = document.getElementById('chat_messages');
@@ -1255,6 +1255,12 @@ async function sendMessage()
 
         if (!result.success)
           {
+            if (result.user_html && pendingUserRow.isConnected) {
+                pendingUserRow.outerHTML = result.user_html;
+                clearAttachment();
+                const chatList = document.getElementById('chat_list');
+                if (chatList && typeof result.titles === 'string') chatList.innerHTML = result.titles;
+            }
             throw new Error(result.error || 'Az üzenetküldés sikertelen.');
           }
 
@@ -1324,8 +1330,10 @@ async function sendMessage()
       {
         console.error('Send message error:', error);
         attachmentFeedback(error.message);
-        pendingUserRow.classList.add('message-send-error');
-        pendingUserRow.title = 'A feldolgozás nem fejeződött be. Ellenőrizd a beszélgetést újraküldés előtt.';
+        if (pendingUserRow.isConnected) {
+            pendingUserRow.classList.add('message-send-error');
+            pendingUserRow.title = 'A feldolgozás nem fejeződött be. Ellenőrizd a beszélgetést újraküldés előtt.';
+        }
       }
     finally
       {
@@ -1343,8 +1351,24 @@ function renderCode(element)
       {
         return;
       }
-//console.log('RAW MODEL TEXT:', element.textContent);
-    element.innerHTML = marked.parse(element.textContent);
+    const markdown = element.dataset.markdown ?? element.textContent;
+    element.dataset.markdown = markdown;
+    const renderer = new marked.Renderer();
+    const escapes = {'&': '&amp;', '<': '&lt;', '>': '&gt;'};
+    renderer.html = ({text}) => text.replace(/[&<>]/g, char => escapes[char]);
+    const formatted = document.createElement('template');
+    formatted.innerHTML = marked.parse(markdown, {renderer});
+    for (const node of formatted.content.querySelectorAll('a[href], img[src]')) {
+        const attribute = node.tagName === 'A' ? 'href' : 'src';
+        try {
+            const url = new URL(node.getAttribute(attribute), document.baseURI);
+            const protocols = attribute === 'href' ? ['http:', 'https:', 'mailto:', 'tel:'] : ['http:', 'https:'];
+            if (!protocols.includes(url.protocol)) node.removeAttribute(attribute);
+        } catch {
+            node.removeAttribute(attribute);
+        }
+    }
+    element.replaceChildren(formatted.content);
 
     element.querySelectorAll('pre code').forEach(function(code)
       {
@@ -1593,7 +1617,7 @@ document.addEventListener('DOMContentLoaded', () =>
       }
   });
 
-/* Regenerate the latest reply or delete one user/assistant turn. */
+/* Update the actions available for each saved turn. */
 function refreshTurnActions() {
     const container = document.getElementById('chat_messages');
     if (!container) return;
@@ -1601,26 +1625,41 @@ function refreshTurnActions() {
     let hasUser = false;
     const busy = chatSending || attachmentUploading || modelChanging;
     rows.forEach((row, index) => {
-        if (row.classList.contains('user')) hasUser = true;
+        if (row.classList.contains('user')) {
+            hasUser = true;
+            const retry = row.querySelector('[data-message-action="retry"]');
+            if (retry) {
+                retry.hidden = Number(row.dataset.messageId) <= 0 || index !== rows.length - 1;
+                retry.disabled = busy || retry.hidden;
+            }
+        }
         if (!row.classList.contains('model')) return;
         const valid = hasUser && Number(row.dataset.messageId) > 0;
-        const retry = row.querySelector('[data-message-action="regenerate"]');
+        const regenerate = row.querySelector('[data-message-action="regenerate"]');
         const remove = row.querySelector('[data-message-action="delete-turn"]');
-        if (retry) retry.disabled = busy || !valid || index !== rows.length - 1;
+        const edit = row.querySelector('[data-message-action="edit"]');
+        if (edit) {
+            edit.hidden = Number(row.dataset.messageId) <= 0 || index !== rows.length - 1;
+            edit.disabled = busy || edit.hidden;
+        }
+        if (regenerate) regenerate.disabled = busy || !valid || index !== rows.length - 1;
         if (remove) remove.disabled = busy || !valid;
     });
 }
 
-async function runTurnAction(button, regenerate) {
-    if (chatSending || attachmentUploading || modelChanging || newChatStarting) return;
-    const row = button.closest('.message-row.model');
+async function runTurnAction(button) {
+    if (chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) return;
+    const action = button.dataset.messageAction;
+    const generatesReply = action !== 'delete-turn';
+    const row = button.closest('.message-row');
     const container = document.getElementById('chat_messages');
     if (!row || !container || !row.isConnected || button.disabled) return;
     chatSending = true;
+    attachmentFeedback();
     attachmentBusy();
     refreshTurnActions();
     showLoader();
-    if (regenerate) {
+    if (generatesReply) {
         setStatus(LANG.STATUS_WORKING);
         startChatStatus();
     }
@@ -1631,7 +1670,7 @@ async function runTurnAction(button, regenerate) {
         data.append('rate_user', document.getElementById('rate_user')?.checked ? '1' : '0');
         data.append('emotional_ball', document.getElementById('emotional_ball')?.checked ? '1' : '0');
         const response = await chatFetch(
-            regenerate ? '/chat_ajax/regenerate' : '/chat_ajax/deleteturn',
+            '/chat_ajax/' + (generatesReply ? action : 'deleteturn'),
             {
                 method: 'POST', body: data, credentials: 'same-origin',
                 headers: {'X-Requested-With': 'XMLHttpRequest'}
@@ -1645,15 +1684,20 @@ async function runTurnAction(button, regenerate) {
         if (!response.ok || !result.success) {
             throw new Error(result.error || button.title);
         }
-        if (regenerate) {
+        if (generatesReply) {
             if (!result.model_html) throw new Error(button.title);
             const holder = document.createElement('div');
             holder.innerHTML = result.model_html;
             const replacement = holder.querySelector('.message-row.model');
             if (!replacement) throw new Error(button.title);
-            row.replaceWith(replacement);
+            if (action === 'retry') row.after(replacement);
+            else row.replaceWith(replacement);
             replacement.querySelectorAll('.model-message-content').forEach(renderCode);
-            if (result.rating_html) showRating(result.rating_html);
+            const ratingButton = container.querySelector(
+                `.message-row.user[data-message-id="${Number(result.user_message_id)}"] .message-rating`
+            );
+            ratingButton?.classList.toggle('has-rating', Boolean(result.rating_html));
+            showRating(result.rating_html || '');
             if (document.getElementById('test_mode')?.checked && result.metrics_html) {
                 showMetrics(result.metrics_html);
             }
@@ -1679,18 +1723,72 @@ async function runTurnAction(button, regenerate) {
     }
 }
 
+function openReplyEditor(button) {
+    if (chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) return;
+    const row = button.closest('.message-row.model');
+    const message = row?.querySelector('.model-message-content');
+    const dialog = document.getElementById('chat-reply-editor');
+    if (!message || !dialog) return;
+
+    const form = dialog.querySelector('form');
+    const input = dialog.querySelector('textarea');
+    const errorBox = dialog.querySelector('[role="alert"]');
+    const cancel = dialog.querySelector('[data-cancel]');
+    const save = dialog.querySelector('[type="submit"]');
+    input.value = message.dataset.markdown ?? message.textContent;
+    errorBox.hidden = true;
+    cancel.onclick = () => dialog.close();
+    dialog.oncancel = event => {
+        if (save.disabled) event.preventDefault();
+    };
+    form.onsubmit = async event => {
+        event.preventDefault();
+        if (save.disabled) return;
+        chatSending = true;
+        save.disabled = cancel.disabled = input.readOnly = true;
+        errorBox.hidden = true;
+        try {
+            const body = new FormData();
+            body.append('id', row.dataset.messageId);
+            body.append('csrf_token', button.dataset.csrf || '');
+            body.append('version', row.dataset.messageVersion);
+            body.append('content', input.value);
+            const response = await chatFetch('/chat_ajax/editreply', {method: 'POST', body});
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || button.title);
+            row.dataset.messageVersion = result.version;
+            message.dataset.markdown = result.content;
+            renderCode(message);
+            const speaker = row.querySelector('[data-message-action="speak"]');
+            if (speaker) speaker.dataset.voiceText = result.voice_text;
+            dialog.close();
+        } catch (error) {
+            errorBox.textContent = error.message;
+            errorBox.hidden = false;
+        } finally {
+            save.disabled = cancel.disabled = input.readOnly = false;
+            chatSending = false;
+            refreshTurnActions();
+        }
+    };
+    dialog.showModal();
+    input.focus();
+}
+
 document.addEventListener('click', function (event) {
     const button = event.target.closest(
-        '[data-message-action="regenerate"], [data-message-action="delete-turn"]'
+        '[data-message-action="retry"], [data-message-action="regenerate"], [data-message-action="delete-turn"], [data-message-action="edit"]'
     );
     if (!button || button.disabled) return;
     event.preventDefault();
-    if (button.dataset.messageAction === 'regenerate') {
-        runTurnAction(button, true);
+    if (button.dataset.messageAction === 'edit') {
+        openReplyEditor(button);
+    } else if (button.dataset.messageAction !== 'delete-turn') {
+        runTurnAction(button);
     } else {
         _confirm(button.dataset.confirm, function () {
             modalClose('modal_pconfirm');
-            runTurnAction(button, false);
+            runTurnAction(button);
         });
     }
 });
@@ -1702,4 +1800,6 @@ document.addEventListener('DOMContentLoaded', function () {
         childList: true, subtree: true
     });
     refreshTurnActions();
+    const activeChatId = Number(container.dataset.activeChatId);
+    if (activeChatId > 0) changeChat(activeChatId);
 });

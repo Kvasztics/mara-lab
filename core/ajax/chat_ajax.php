@@ -10,15 +10,25 @@ class chat_ajax
 
   public function regenerate(): void
   {
-      $this->turnAction(true);
+      $this->turnAction('regenerate');
+  }
+
+  public function retry(): void
+  {
+      $this->turnAction('retry');
   }
 
   public function deleteturn(): void
   {
-      $this->turnAction(false);
+      $this->turnAction('delete');
   }
 
-  private function turnAction(bool $regenerate): void
+  public function editreply(): void
+  {
+      $this->turnAction('edit');
+  }
+
+  private function turnAction(string $action): void
   {
       User::loggedIn();
       header('Content-Type: application/json; charset=utf-8');
@@ -35,9 +45,12 @@ class chat_ajax
       try {
           $id = (int)($_POST['id'] ?? 0);
           if ($id <= 0) throw new \InvalidArgumentException('Invalid message ID.');
-          $result = $regenerate
-              ? $this->CHAT->regenerate($id, $_POST)
-              : $this->CHAT->deleteTurn($id);
+          $result = match ($action) {
+              'regenerate' => $this->CHAT->regenerate($id, $_POST),
+              'retry' => $this->CHAT->retry($id, $_POST),
+              'edit' => $this->CHAT->editReply($id, $_POST),
+              'delete' => $this->CHAT->deleteTurn($id),
+          };
           if (empty($result['success']) && empty($result['error'])) {
               $result['error'] = LANG['CHAT_TURN_ERROR'];
           }
@@ -202,16 +215,13 @@ public function newchat(): void
     header('Content-Type: application/json; charset=utf-8');
 
     $chatId = (int)($_POST['id'] ?? 0);
+    $html = $this->CHAT->change($chatId);
 
-    if ($chatId <= 0)
+    if ($html === null)
       {
-        echo json_encode([
-          'success' => false
-        ]);
+        echo json_encode(['success' => false]);
         return;
       }
-
-    $html = $this->CHAT->change($chatId);
 
     echo json_encode([
       'success' => true,

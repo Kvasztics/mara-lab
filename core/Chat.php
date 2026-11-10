@@ -64,13 +64,41 @@ public function regenerate(int $assistantId, array $input): array
     if ($turn === null || !$turn['latest']) {
         return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR_LATEST']];
     }
-    $input['message'] = (string)$turn['user']['content'];
-    $input['image_path'] = (string)($turn['user']['image_user'] ?? '');
-    try {
-        return $this->processSend($input, $turn);
-    } finally {
-        Status::clear();
+    return $this->processSend($input, $turn);
+  }
+
+public function retry(int $userMessageId, array $input): array
+  {
+    $chatId = (int)($_SESSION['chat_id'] ?? 0);
+    $modelId = (int)($_SESSION['model_id'] ?? 0);
+    $turn = $this->db->unansweredTurn($chatId, $modelId, $userMessageId);
+    if ($turn === null) {
+        return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR_RETRY']];
     }
+    return $this->processSend($input, $turn);
+  }
+
+public function editReply(int $messageId, array $input): array
+  {
+    $chatId = (int)($_SESSION['chat_id'] ?? 0);
+    $modelId = (int)($_SESSION['model_id'] ?? 0);
+    $version = $input['version'] ?? null;
+    $content = $input['content'] ?? null;
+    $content = is_string($content) ? str_replace(["\r\n", "\r"], "\n", $content) : '';
+    if (trim($content) === '' || strlen($content) > 65535 ||
+        !preg_match('//u', $content)) {
+        return ['success' => false, 'error' => LANG['CHAT_TURN_EDIT_INVALID']];
+    }
+    if ($chatId <= 0 || !is_string($version) ||
+        !$this->db->editLatestAssistant($chatId, $modelId, $messageId, $version, $content)) {
+        return ['success' => false, 'error' => LANG['CHAT_TURN_EDIT_LATEST']];
+    }
+    return [
+        'success' => true,
+        'content' => $content,
+        'version' => hash('sha256', $content),
+        'voice_text' => VoiceText::clean($content),
+    ];
   }
 
 public function deleteTurn(int $assistantId): array
@@ -90,10 +118,15 @@ public function deleteTurn(int $assistantId): array
     ];
   }
 
-private function processSend(array $input, ?array $regeneration = null): array
+private function processSend(array $input, ?array $turn = null): array
   {
     $modelId = (int)($_SESSION['model_id'] ?? 0);
     $chatId  = (int)($_SESSION['chat_id'] ?? 0);
+    $newUserMessage = $turn === null;
+    if (!$newUserMessage) {
+        $input['message'] = $turn['user']['content'];
+        $input['image_path'] = $turn['user']['image_user'] ?? '';
+    }
     $message = trim((string)($input['message'] ?? ''));
 
     if ($chatId > 0) {
@@ -129,9 +162,9 @@ private function processSend(array $input, ?array $regeneration = null): array
       /*
       * First message.
       */
-      if ($regeneration !== null)
+      if (!$newUserMessage)
         {
-          $messageId = (int)$regeneration['user']['id'];
+          $messageId = (int)$turn['user']['id'];
         } elseif ($chatId === 0)
         {
           /*
@@ -205,32 +238,39 @@ private function processSend(array $input, ?array $regeneration = null): array
             session_write_close();
           }
 
-        /*
-         * Render user message.
-        */
-        $userTemplate = new Template(
-            DIR_TPL.'/chat_user.tpl.php',
-            [
-              'message' => $message,
-              'id'      => $messageId,
-              'image'   => $input['image'] ?? null
-            ]
-        );
-
-        $userHtml = $userTemplate->fetch();        
-      /*
-      * Load conversation history.
-      */
-      $history = $regeneration !== null
-          ? $regeneration['history']
-          : $this->db->getMessages($chatId);
-
-      if (empty($history))
-        {
-          return [
-            'success' => false
-          ];
+    try {
+        $turn ??= $this->db->unansweredTurn($chatId, $modelId, $messageId);
+        if ($turn === null) {
+            return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
         }
+        $result = $this->generateReply($chatId, $model, $input, $turn, $newUserMessage);
+    } catch (\Throwable $error) {
+        if (!$newUserMessage) {
+            throw $error;
+        }
+        error_log('Mara chat: '.$error->getMessage());
+        $result = ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
+    } finally {
+        Status::clear();
+    }
+
+    if (empty($result['success']) && $newUserMessage) {
+        $unanswered = $this->db->unansweredTurn($chatId, $modelId, $messageId);
+        if ($unanswered !== null) {
+            $result['error'] = LANG['CHAT_TURN_NO_REPLY'];
+            $result['user_html'] = $this->renderUserMessage($unanswered['user']);
+            $result['titles'] = $this->chat_titles($modelId);
+        }
+    }
+    return $result;
+  }
+
+private function generateReply(int $chatId, array $model, array $input, array $turn, bool $newUserMessage): array
+  {
+      $modelId = (int)($_SESSION['model_id'] ?? 0);
+      $userMessageId = (int)$turn['user']['id'];
+      $message = trim((string)$turn['user']['content']);
+      $history = $turn['history'];
       $refreshTitles = true;
       foreach ($history as $row) {
           if (($row['role'] ?? '') === 'assistant') {
@@ -473,7 +513,8 @@ private function processSend(array $input, ?array $regeneration = null): array
         if (!$providers->activate($model))
           {
             return [
-              'success' => false
+              'success' => false,
+              'error' => LANG['CHAT_TURN_NO_REPLY']
             ];
           }
 
@@ -525,6 +566,23 @@ private function processSend(array $input, ?array $regeneration = null): array
                 $tools
             );
 
+            // Validate the whole round before replaying it or running any tools.
+            $parsedToolCalls = [];
+            foreach ($response->toolCalls as $toolCall) {
+                $function = is_array($toolCall) ? ($toolCall['function'] ?? null) : null;
+                $name = is_array($function) ? ($function['name'] ?? null) : null;
+                $args = $this->parseToolArguments($function['arguments'] ?? []);
+                if (!is_string($name) || $name === '' || $args === null) {
+                    $this->TOOLS->log('REJECTED', is_string($name) ? $name : '', [
+                        'chat_id' => $chatId,
+                        'model_id' => $modelId,
+                        'error' => 'Malformed tool call. Continuing without tools.',
+                    ]);
+                    break 2;
+                }
+                $parsedToolCalls[] = [$toolCall, $args];
+            }
+
             /*
             * Keep only real assistant text:
             * tool-call preamble and final reply.
@@ -556,7 +614,7 @@ private function processSend(array $input, ?array $regeneration = null): array
                 'tool_calls' => $response->toolCalls
             ];
 
-            foreach ($response->toolCalls as $toolCall)
+            foreach ($parsedToolCalls as [$toolCall, $args])
               {
                 $name = (string)(
                     $toolCall['function']['name'] ?? ''
@@ -564,21 +622,6 @@ private function processSend(array $input, ?array $regeneration = null): array
                 $toolCallId = (string)(
                     $toolCall['id'] ?? ''
                 );                
-
-                $args = $toolCall['function']['arguments'] ?? [];
-
-                /*
-                * OpenAI compatible APIs may return arguments
-                * as a JSON string.
-                */
-                if (is_string($args))
-                  {
-                    $decoded = json_decode($args, true);
-
-                    $args = is_array($decoded)
-                        ? $decoded
-                        : [];
-                  }
 
                 if (!in_array($name, $allowedToolNames, true) ||
                     ($name === 'update_emotional_state' && $emotionUpdated)) {
@@ -590,7 +633,7 @@ private function processSend(array $input, ?array $regeneration = null): array
                 } else {
                     $toolResult = $this->TOOLS->run(
                         $name,
-                        is_array($args) ? $args : [],
+                        $args,
                         [
                           'chat_id'  => $chatId,
                           'model_id' => $modelId,
@@ -684,7 +727,7 @@ private function processSend(array $input, ?array $regeneration = null): array
                 'content' =>
                     'The tool execution phase has ended. '
                     . 'Answer the user now using the information already available. '
-                    . 'Do not call any tools.'
+                    . 'Do not call any tools or include tool-call markup.'
             ];
             $response = $provider->chat(
                 $messages,
@@ -694,7 +737,8 @@ private function processSend(array $input, ?array $regeneration = null): array
             $fallbackContent = trim(
                 (string)$response->content
             );
-            if ($fallbackContent !== '')
+            if ($fallbackContent !== '' && empty($response->toolCalls) &&
+                !$this->containsToolMarkup($fallbackContent))
               {
                 $assistantContent[] = $fallbackContent;
               }
@@ -718,18 +762,10 @@ private function processSend(array $input, ?array $regeneration = null): array
           {
             return [
               'success' => false,
-              'chat_id' => $chatId
+              'chat_id' => $chatId,
+              'error' => LANG['CHAT_TURN_NO_REPLY']
             ];
           }
-
-        if ($regeneration === null && is_array($rating))
-          {
-            $this->db->saveUserRating(
-                $messageId,
-                $rating
-            );
-          }
-        $ratingHtml = $this->renderRating($rating);  
 
         $metrics = [
           'usage' => $response->usage,
@@ -755,39 +791,25 @@ private function processSend(array $input, ?array $regeneration = null): array
             $contextTrimmed = true;
           }
 
-        if ($regeneration === null) {
-            $this->db->saveContextState(
-                $chatId,
-                $promptEvalCount,
-                $contextTrimmed
-            );
-        }
-
-
         $assistantData = [
             'metrics' => $metrics,
             'image_generated' => $generatedImage,
             'image_prompt' => $generatedPrompt,
         ];
-        $messageId = $regeneration !== null
-            ? $this->db->replaceAssistantTurn(
-                $chatId, $modelId, $regeneration, $content, $assistantData,
-                is_array($rating) ? $rating : null,
-                $promptEvalCount, $contextTrimmed
-            )
-            : $this->db->saveMessage(
-                $chatId, 'assistant', $content, $assistantData
-            );
+        $messageId = $this->db->saveAssistantTurn(
+            $chatId, $modelId, $turn, $content, $assistantData, $rating,
+            $promptEvalCount, $contextTrimmed
+        );
+
+        $regenerated = isset($turn['assistant']);
+        if (!$regenerated && $rating === null) {
+            $storedRating = json_decode((string)($turn['user']['rating_user'] ?? ''), true);
+            $rating = is_array($storedRating) ? $storedRating : null;
+        }
+        $ratingHtml = $this->renderRating($rating);
+        $userHtml = $newUserMessage ? $this->renderUserMessage($turn['user'], $rating) : '';
 
         $metricsHtml = $this->renderMetrics($metrics, $model);
-
-        if ($messageId <= 0)
-          {
-            return [
-              'success' => false,
-              'chat_id' => $chatId
-            ];
-          }
 
         /*
         * Render assistant message.
@@ -805,13 +827,12 @@ private function processSend(array $input, ?array $regeneration = null): array
         $modelHtml = $modelTemplate->fetch();          
 
 
-    Status::clear();
-
     return [
       'success'      => true,
       'chat_id'      => $chatId,
-      'user_html'    => $regeneration === null ? $userHtml : '',
-      'regenerated'  => $regeneration !== null,
+      'user_html'    => $userHtml,
+      'user_message_id' => $userMessageId,
+      'regenerated'  => $regenerated,
       'message_id'   => $messageId,
       'model_html'   => $modelHtml,
       'voice_text'   => VoiceText::clean($content),
@@ -820,18 +841,61 @@ private function processSend(array $input, ?array $regeneration = null): array
       'titles'       => $refreshTitles ? $this->chat_titles($modelId) : null
     ];     
   }  
+
+private function parseToolArguments(mixed $args): ?array
+  {
+    // Ollama provides an array, while OpenAI-compatible APIs may provide JSON.
+    if (is_string($args)) {
+        if (!str_starts_with(ltrim($args), '{')) return null;
+        $args = json_decode($args, true);
+    }
+    if (!is_array($args) || ($args !== [] && array_is_list($args))) return null;
+
+    $malformed = false;
+    array_walk_recursive($args, function (mixed $value) use (&$malformed): void {
+        if (is_string($value) && $this->containsToolMarkup($value)) {
+            $malformed = true;
+        }
+    });
+    return $malformed ? null : $args;
+  }
+
+private function containsToolMarkup(string $value): bool
+  {
+    // A model can leak either actual newlines or literal \n into a parameter.
+    $gap = '(?:\s|\\\\[rn])*+';
+    return preg_match('~</parameter>'.$gap.'</function>'.$gap.'</tool_call>|<tool_call>'.$gap.'<function[=>]~i', $value) === 1;
+  }
+
+private function renderUserMessage(array $row, ?array $rating = null): string
+  {
+    $rating ??= json_decode((string)($row['rating_user'] ?? ''), true);
+    return (new Template(DIR_TPL.'/chat_user.tpl.php', [
+      'message'         => $row['content'],
+      'id'              => $row['id'],
+      'image'           => $row['image_user'] ?? null,
+      'has_user_rating' => is_array($rating) && !empty($rating),
+    ]))->fetch();
+  }
+
 /**
  * Change chat
  *
  * @access public
  * @param int $chatId
- * @return string
+ * @return string|null
  */
-public function change(int $chatId): string
+public function change(int $chatId): ?string
   {
     if ($chatId <= 0)
       {
-        return '';
+        return null;
+      }
+
+    $chat = $this->db->getChat($chatId);
+    if ($chat === null || (int)$chat['model_id'] !== (int)($_SESSION['model_id'] ?? 0))
+      {
+        return null;
       }
 
     $messages = $this->db->getMessages($chatId);
@@ -845,17 +909,7 @@ public function change(int $chatId): string
 
         if ($row['role'] === 'user')
           {
-            $image = $row['image_user'];
-
-            $T = new Template(
-                DIR_TPL.'/chat_user.tpl.php',
-                [
-                  'message' => $message,
-                  'id'      => $id,
-                  'image'   => $image
-                ]
-            );
-            $html .= $T->fetch();
+            $html .= $this->renderUserMessage($row);
           } else
         if ($row['role'] === 'assistant')
           {

@@ -85,7 +85,8 @@ public function definition(): array
             ],
 
             'note' => [
-              'type' => 'string'
+              'type' => 'string',
+              'description' => 'One short sentence explaining the rating.'
             ]
           ],
           'required' => [

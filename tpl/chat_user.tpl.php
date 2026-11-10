@@ -1,4 +1,4 @@
-<div class="message-row user">
+<div class="message-row user" data-message-id="<?= (int)$id ?>">
 
     <div class="message-body<?php echo !empty($image) ? ' message-with-image' : ''; ?>">
 
@@ -19,7 +19,17 @@
             <div class="message-text"><?php echo $message; ?></div>
 
             <div class="message-actions">
-                <button type="button" class="message-action" aria-label="Értékelés" onclick="getUserRating(<?php echo (int)$id; ?>)">
+                <button type="button" class="message-action" hidden disabled
+                        data-message-action="retry"
+                        data-csrf="<?= htmlspecialchars((string)($_SESSION['chat_turn_csrf'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        title="<?= htmlspecialchars(LANG['CHAT_TURN_RETRY'], ENT_QUOTES, 'UTF-8') ?>"
+                        aria-label="<?= htmlspecialchars(LANG['CHAT_TURN_RETRY'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= $this->icon('regenerate') ?>
+                </button>
+                <button type="button"
+                        class="message-action message-rating<?= !empty($has_user_rating) ? ' has-rating' : '' ?>"
+                        aria-label="<?= htmlspecialchars(LANG['CHAT_USER_RATING'], ENT_QUOTES, 'UTF-8') ?>"
+                        onclick="getUserRating(<?= (int)$id ?>)">
                     <?= $this->icon('star') ?>
                 </button>
             </div>

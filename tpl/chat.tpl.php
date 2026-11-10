@@ -140,7 +140,7 @@
              MESSAGES
              -------------------------------------------------------------- -->
 
-        <div class="chat-messages" id="chat_messages">
+        <div class="chat-messages" id="chat_messages" data-active-chat-id="<?= (int)($active_chat_id ?? 0) ?>">
           <?php echo $messages ?? ''; ?>
         </div>
 
@@ -229,6 +229,18 @@
 
 
     </section>
+
+    <dialog id="chat-reply-editor" class="chat-reply-editor" aria-labelledby="chat-reply-editor-title">
+        <form>
+            <label id="chat-reply-editor-title" for="chat-reply-text"><?= htmlspecialchars(LANG['CHAT_TURN_EDIT']) ?></label>
+            <textarea id="chat-reply-text" rows="10" required></textarea>
+            <p role="alert" class="chat-reply-error" hidden></p>
+            <div class="chat-reply-editor-actions">
+                <button type="button" class="btn" data-cancel><?= htmlspecialchars(LANG['CANCEL']) ?></button>
+                <button type="submit" class="btn btn-primary"><?= htmlspecialchars(LANG['SAVE']) ?></button>
+            </div>
+        </form>
+    </dialog>
 
 
 </div>		

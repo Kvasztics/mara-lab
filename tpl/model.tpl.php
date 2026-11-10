@@ -226,19 +226,19 @@
 
                     <!-- MMPROJ -->
 
-                    <div class="settings-field">
+                    <div id="model-mmproj-field" <?= ($provider ?? '') === 'llamacpp' ? '' : 'hidden' ?>>
+                        <div class="settings-field">
+                            <label for="model-mmproj">
+                                <?= htmlspecialchars(LANG['MODEL_MMPROJ']) ?>
+                            </label>
 
-                        <label for="model-mmproj">
-                            MMProj
-                        </label>
-
-                        <input
-                            type="text"
-                            id="model-mmproj"
-                            name="mmproj"
-                            value="<?php echo htmlspecialchars($mmproj ?? ''); ?>"
-                            placeholder="mmproj model path">
-
+                            <select id="model-mmproj" name="mmproj">
+                                <option value=""><?= htmlspecialchars(LANG['MODEL_MMPROJ_NONE']) ?></option>
+                                <?php if (($mmproj ?? '') !== ''): ?>
+                                    <option value="<?= htmlspecialchars($mmproj) ?>" selected><?= htmlspecialchars($mmproj) ?></option>
+                                <?php endif; ?>
+                            </select>
+                        </div>
                     </div>
                                         <!-- MODEL INFORMATION -->
                     <div class="model-base-info-row">
@@ -467,12 +467,23 @@
 
               <div class="psyche-history-list">
 
-                  <?php foreach (($past ?? []) as $pastPsyche) { ?>
+                  <input type="hidden" id="psyche-id" name="psyche_id" value="<?= (int)($psyche_data['id'] ?? 0) ?>">
+                  <input type="hidden" id="psyche-version" name="psyche_version" value="<?= htmlspecialchars($psyche_data['version'] ?? '') ?>">
+                  <?php foreach (empty($psyche_data) ? [] : [$psyche_data, ...($past ?? [])] as $index => $record) { ?>
                     <button
                         type="button"
-                        class="psyche-history-item"
-                        data-psyche-id="<?php echo (int)($pastPsyche['id'] ?? 0); ?>">
-                        <span><?php echo htmlspecialchars($pastPsyche['modify'] ?? ''); ?></span>
+                        class="psyche-history-item<?= $index === 0 ? ' active' : '' ?>"
+                        aria-pressed="<?= $index === 0 ? 'true' : 'false' ?>"
+                        data-current="<?= $index === 0 ? '1' : '0' ?>"
+                        data-psyche="<?= htmlspecialchars(json_encode([
+                            'id' => (int)$record['id'],
+                            'version' => $record['version'],
+                            'prompt' => (string)$record['prompt'],
+                            'memory' => (string)$record['memory'],
+                            'reason' => (string)$record['reason'],
+                        ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR), ENT_QUOTES, 'UTF-8') ?>">
+                        <span>#<?= (int)$record['id'] ?> · <?= htmlspecialchars($record['prompt_modify']) ?>
+                            <?= $index === 0 ? ' · '.htmlspecialchars(LANG['MODEL_PSYCHE_ACTIVE']) : '' ?></span>
                     </button>
                   <?php } ?>
 
@@ -485,17 +496,14 @@
             <div class="settings-field settings-field-textarea model-psyche-prompt">
 
                 <label for="psyche-prompt">
-                    Prompt
+                    <?= htmlspecialchars(LANG['MODEL_PSYCHE_PROMPT']) ?>
                 </label>
 
                 <textarea
                     id="psyche-prompt"
                     name="psyche_prompt"
                     rows="10"
-                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_PROMPT_PLACEHOLDER']); ?>"><?php echo htmlspecialchars(\mara\core\integration\CharacterCardContext::profilePrompt([
-                        'psyche_data' => $psyche_data ?? [],
-                        'card_data' => $card_data ?? null
-                    ]), ENT_QUOTES, 'UTF-8'); ?></textarea>
+                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_PROMPT_PLACEHOLDER']); ?>"><?= "\n".htmlspecialchars($psyche_data['prompt'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
 
             </div>
 
@@ -505,14 +513,14 @@
             <div class="settings-field settings-field-textarea">
 
                 <label for="psyche-memory">
-                    Memory
+                    <?= htmlspecialchars(LANG['MODEL_PSYCHE_MEMORY']) ?>
                 </label>
 
                 <textarea
                     id="psyche-memory"
                     name="psyche_memory"
                     rows="4"
-                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_MEMORY_PLACEHOLDER']); ?>"><?php echo htmlspecialchars($psyche_data['memory'] ?? ''); ?></textarea>
+                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_MEMORY_PLACEHOLDER']); ?>"><?= "\n".htmlspecialchars($psyche_data['memory'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
 
             </div>
 
@@ -522,14 +530,14 @@
             <div class="settings-field settings-field-textarea">
 
                 <label for="psyche-reason">
-                    Reason
+                    <?= htmlspecialchars(LANG['MODEL_PSYCHE_REASON']) ?>
                 </label>
 
                 <textarea
                     id="psyche-reason"
                     name="psyche_reason"
                     rows="4"
-                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_REASON_PLACEHOLDER']); ?>"><?php echo htmlspecialchars($psyche_data['reason'] ?? ''); ?></textarea>
+                    placeholder="<?php echo htmlspecialchars(LANG['MODEL_PSYCHE_REASON_PLACEHOLDER']); ?>"><?= "\n".htmlspecialchars($psyche_data['reason'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
 
             </div>
 

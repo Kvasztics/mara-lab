@@ -35,206 +35,107 @@ public function getByModelId(int $modelId): array
       "SELECT *
        FROM {$this->table}
        WHERE model_id = ?
-       ORDER BY id DESC"
+       ORDER BY prompt_modify DESC, id DESC"
     );
 
     $stmt->bind_param('i', $modelId);
     $stmt->execute();
 
-    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    foreach ($records as &$record) {
+        $record['version'] = hash('sha256', serialize($record));
+    }
+    unset($record);
+    return $records;
   }
-/**
- * Insert psyche record.
- *
- * @param int $modelId
- * @param string $prompt
- * @param string $memory
- * @param string $reason
- * @return bool
- */
-public function insert(
+/** Save under the model row lock held by the caller. */
+public function saveSelection(
     int $modelId,
-    string $prompt,
-    string $memory,
-    string $reason
-): bool
-  {
-    $stmt = $this->DB->prepare(
-      "INSERT INTO {$this->table}
-       (model_id, prompt, memory, reason)
-       VALUES (?, ?, ?, ?)"
-    );
-
-    $stmt->bind_param(
-      'isss',
-      $modelId,
-      $prompt,
-      $memory,
-      $reason
-    );
-
-    return $stmt->execute();
-  }
-/**
- * Update latest psyche record.
- *
- * prompt_modify is changed only when prompt changes.
- * memory_modify is changed only when memory changes.
- *
- * @param int $modelId
- * @param string $prompt
- * @param string $memory
- * @param string $reason
- * @return bool
- */
-public function updateLatest(
-    int $modelId,
+    int $selectedId,
+    string $selectedVersion,
+    bool $create,
     string $prompt,
     string $memory,
     string $reason
 ): bool
   {
     $records = $this->getByModelId($modelId);
+    $latestModification = $records[0]['prompt_modify'] ?? null;
+    [$prompt, $memory, $reason] = str_replace(["\r\n", "\r"], "\n", [$prompt, $memory, $reason]);
 
-    if (empty($records))
-      {
-        return $this->insert(
-          $modelId,
-          $prompt,
-          $memory,
-          $reason
-        );
-      }
-
-    $current = $records[0];
-
-    $promptChanged = (string)($current['prompt'] ?? '') !== $prompt;
-    $memoryChanged = (string)($current['memory'] ?? '') !== $memory;
-    $reasonChanged = (string)($current['reason'] ?? '') !== $reason;
-
-    if (!$promptChanged && !$memoryChanged && !$reasonChanged)
-      {
-        return true;
-      }
-
-    $set   = [];
-    $types = '';
-    $values = [];
-
-    if ($promptChanged)
-      {
-        $set[]    = 'prompt = ?';
-        $set[]    = 'prompt_modify = CURRENT_TIMESTAMP';
-        $types   .= 's';
-        $values[] = $prompt;
-      }
-
-    if ($memoryChanged)
-      {
-        $set[]    = 'memory = ?';
-        $set[]    = 'memory_modify = CURRENT_TIMESTAMP';
-        $types   .= 's';
-        $values[] = $memory;
-      }
-
-    if ($reasonChanged)
-      {
-        $set[]    = 'reason = ?';
-        $types   .= 's';
-        $values[] = $reason;
-      }
-
-    $types   .= 'i';
-    $values[] = (int)$current['id'];
-
-    $sql = "UPDATE {$this->table}
-            SET " . implode(', ', $set) . "
-            WHERE id = ?
-            LIMIT 1";
-
-    $stmt = $this->DB->prepare($sql);
-    $stmt->bind_param($types, ...$values);
-
-    return $stmt->execute();
-  }
-
-/**
- * Update the memory of the latest psyche record without changing its prompt.
- *
- * @param int $modelId
- * @param string $memory
- * @param string $mode append or replace
- * @param string $reason
- * @return bool
- */
-public function updateLatestMemory(
-    int $modelId,
-    string $memory,
-    string $mode = 'append',
-    string $reason = ''
-): bool
-  {
-    $records = $this->getByModelId($modelId);
-
-    if (empty($records))
-      {
-        return false;
-      }
-
-    $current = $records[0];
-    $currentMemory = trim((string)($current['memory'] ?? ''));
-    $memory = trim($memory);
-
-    if ($mode !== 'replace')
-      {
-        $mode = 'append';
-      }
-
-    $newMemory = $mode === 'replace'
-        ? $memory
-        : trim($currentMemory . "\n\n" . $memory);
-
-    $reason = trim($reason);
-
-    if (
-        $newMemory === $currentMemory &&
-        ($reason === '' || $reason === (string)($current['reason'] ?? ''))
-    )
-      {
-        return true;
-      }
-
-    if ($reason === '')
-      {
+    if ($create || ($selectedId === 0 && !$records)) {
         $stmt = $this->DB->prepare(
-            "UPDATE {$this->table}
-             SET memory = ?,
-                 memory_modify = CURRENT_TIMESTAMP
-             WHERE id = ?
-             LIMIT 1"
+            "INSERT INTO {$this->table} (model_id, prompt, memory, reason, prompt_modify)
+             VALUES (?, ?, ?, ?, GREATEST(CURRENT_TIMESTAMP,
+                 COALESCE(TIMESTAMPADD(SECOND, 1, CAST(? AS DATETIME)), CURRENT_TIMESTAMP)))"
         );
-
-        $id = (int)$current['id'];
-        $stmt->bind_param('si', $newMemory, $id);
-
+        $stmt->bind_param('issss', $modelId, $prompt, $memory, $reason, $latestModification);
         return $stmt->execute();
-      }
+    }
 
+    foreach ($records as $record) {
+        if ($selectedId === 0 || (int)$record['id'] === $selectedId) {
+            if ($selectedVersion !== '' && $selectedVersion !== $record['version']) {
+                return false;
+            }
+            return $this->updateRecord($record, $prompt, $memory, $reason, $latestModification);
+        }
+    }
+    return false;
+  }
+
+private function updateRecord(array $record, string $prompt, string $memory, string $reason, ?string $latestModification): bool
+  {
+    $normalize = static fn(?string $text): string => str_replace(["\r\n", "\r"], "\n", (string)$text);
+    $memoryChanged = (int)($normalize($record['memory']) !== $normalize($memory));
+    $prompt = $normalize($record['prompt']) === $normalize($prompt) ? $record['prompt'] : $prompt;
+    $memory = $memoryChanged ? $memory : $record['memory'];
+    $reason = $normalize($record['reason']) === $normalize($reason) ? $record['reason'] : $reason;
+    $id = (int)$record['id'];
+    $modelId = (int)$record['model_id'];
     $stmt = $this->DB->prepare(
         "UPDATE {$this->table}
-         SET memory = ?,
-             memory_modify = CURRENT_TIMESTAMP,
+         SET prompt = ?,
+             prompt_modify = COALESCE(GREATEST(CURRENT_TIMESTAMP, TIMESTAMPADD(SECOND, 1, CAST(? AS DATETIME))), prompt_modify),
+             memory = ?, memory_modify = IF(?, CURRENT_TIMESTAMP, memory_modify),
              reason = ?
-         WHERE id = ?
-         LIMIT 1"
+         WHERE id = ? AND model_id = ?"
     );
-
-    $id = (int)$current['id'];
-    $stmt->bind_param('ssi', $newMemory, $reason, $id);
-
+    $stmt->bind_param('sssisii', $prompt, $latestModification, $memory, $memoryChanged, $reason, $id, $modelId);
     return $stmt->execute();
   }
 
+/** Update the memory of the current Psyché without changing its prompt. */
+public function updateLatestMemory(int $modelId, string $memory, string $mode = 'append', string $reason = ''): bool
+  {
+    if (!$this->DB->begin_transaction()) {
+        return false;
+    }
+    $committed = false;
+    try {
+        $lock = $this->DB->prepare('SELECT id FROM models WHERE id = ? FOR UPDATE');
+        $lock->bind_param('i', $modelId);
+        if (!$lock->execute() || !$lock->get_result()->fetch_assoc()) {
+            return false;
+        }
+        $current = $this->getByModelId($modelId)[0] ?? null;
+        if ($current === null) {
+            return false;
+        }
 
+        $currentMemory = trim((string)$current['memory']);
+        $newMemory = $mode === 'replace' ? trim($memory) : trim($currentMemory . "\n\n" . trim($memory));
+        $currentReason = (string)$current['reason'];
+        $newReason = trim($reason) === '' ? $currentReason : trim($reason);
+        if (($newMemory !== $currentMemory || $newReason !== $currentReason) &&
+            !$this->updateRecord($current, (string)$current['prompt'], $newMemory, $newReason, null)) {
+            return false;
+        }
+        $committed = $this->DB->commit();
+        return $committed;
+    } finally {
+        if (!$committed) $this->DB->rollback();
+    }
+  }
 }
 ?>

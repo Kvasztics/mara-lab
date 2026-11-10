@@ -4,6 +4,25 @@ namespace mara\database;
 
 trait ChatTurns
 {
+    public function unansweredTurn(int $chatId, int $modelId, int $userMessageId): ?array
+    {
+        $chat = $this->getChat($chatId);
+        if ($chat === null || (int)$chat['model_id'] !== $modelId) {
+            return null;
+        }
+        $rows = $this->getMessages($chatId);
+        $user = end($rows);
+        if ($user === false || $user['role'] !== 'user' || (int)$user['id'] !== $userMessageId) {
+            return null;
+        }
+        return [
+            'user' => $user,
+            'latest' => true,
+            'history' => $rows,
+            'fingerprint' => hash('sha256', serialize($rows)),
+        ];
+    }
+
     /** Read an owned conversation and identify a complete user/assistant turn. */
     public function assistantTurn(int $chatId, int $modelId, int $assistantId): ?array
     {
@@ -51,8 +70,7 @@ trait ChatTurns
         ];
     }
 
-    /** Commit only if the owned conversation has not changed since it was read. */
-    private function lockTurn(int $chatId, int $modelId, array $turn): void
+    private function lockConversation(int $chatId, int $modelId): array
     {
         $userId = \mara\core\User::id();
         $stmt = $this->db->prepare(
@@ -68,13 +86,46 @@ trait ChatTurns
         );
         $stmt->bind_param('i', $chatId);
         if (!$stmt->execute()) throw new \RuntimeException('Cannot read conversation.');
-        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    }
+
+    /** Commit only if the owned conversation has not changed since it was read. */
+    private function lockTurn(int $chatId, int $modelId, array $turn): void
+    {
+        $rows = $this->lockConversation($chatId, $modelId);
         if (!hash_equals($turn['fingerprint'], hash('sha256', serialize($rows)))) {
             throw new \RuntimeException('Conversation changed during the request.');
         }
     }
 
-    public function replaceAssistantTurn(
+    public function editLatestAssistant(int $chatId, int $modelId, int $messageId, string $version, string $content): bool
+    {
+        if (!$this->db->begin_transaction()) {
+            return false;
+        }
+        $committed = false;
+        try {
+            $rows = $this->lockConversation($chatId, $modelId);
+            $latest = end($rows);
+            if (!$latest || $latest['role'] !== 'assistant' || (int)$latest['id'] !== $messageId ||
+                !hash_equals(hash('sha256', (string)$latest['content']), $version)) {
+                return false;
+            }
+            $stmt = $this->db->prepare(
+                "UPDATE {$this->mtable} SET content = ? WHERE id = ? AND session_id = ? AND role = 'assistant'"
+            );
+            $stmt->bind_param('sii', $content, $messageId, $chatId);
+            if (!$stmt->execute()) {
+                return false;
+            }
+            $committed = $this->db->commit();
+            return $committed;
+        } finally {
+            if (!$committed) $this->db->rollback();
+        }
+    }
+
+    public function saveAssistantTurn(
         int $chatId,
         int $modelId,
         array $turn,
@@ -84,32 +135,37 @@ trait ChatTurns
         int $promptTokens,
         bool $trimmed
     ): int {
-        $this->db->begin_transaction();
+        if (!$this->db->begin_transaction()) {
+            throw new \RuntimeException('Cannot begin response transaction.');
+        }
         try {
             $this->lockTurn($chatId, $modelId, $turn);
             if (empty($turn['latest'])) {
-                throw new \RuntimeException('Only the latest response can be regenerated.');
+                throw new \RuntimeException('Only the latest turn can receive a response.');
             }
-            $id = (int)$turn['assistant']['id'];
-            $image = $data['image_generated'] ?? null;
-            $prompt = $data['image_prompt'] ?? null;
-            $metrics = json_encode($data['metrics'] ?? [], JSON_THROW_ON_ERROR);
-            $stmt = $this->db->prepare(
-                "UPDATE {$this->mtable}
-                 SET content = ?, image_generated = ?, image_prompt = ?, metrics = ?,
-                     image_searched = NULL, rating_user = NULL, rating_model = NULL
-                 WHERE id = ? AND session_id = ? AND role = 'assistant'"
-            );
-            $stmt->bind_param('ssssii', $content, $image, $prompt, $metrics, $id, $chatId);
-            if (!$stmt->execute()) throw new \RuntimeException('Cannot replace response.');
+            if (isset($turn['assistant'])) {
+                $id = (int)$turn['assistant']['id'];
+                $image = $data['image_generated'] ?? null;
+                $prompt = $data['image_prompt'] ?? null;
+                $metrics = json_encode($data['metrics'] ?? [], JSON_THROW_ON_ERROR);
+                $stmt = $this->db->prepare(
+                    "UPDATE {$this->mtable}
+                     SET content = ?, image_generated = ?, image_prompt = ?, metrics = ?,
+                         image_searched = NULL, rating_user = NULL, rating_model = NULL
+                     WHERE id = ? AND session_id = ? AND role = 'assistant'"
+                );
+                $stmt->bind_param('ssssii', $content, $image, $prompt, $metrics, $id, $chatId);
+                if (!$stmt->execute()) throw new \RuntimeException('Cannot replace response.');
+            } else {
+                $id = $this->saveMessage($chatId, 'assistant', $content, $data);
+                if ($id <= 0) throw new \RuntimeException('Cannot save response.');
+            }
 
-            $ratingJson = $rating === null ? null : json_encode($rating, JSON_THROW_ON_ERROR);
-            $userMessageId = (int)$turn['user']['id'];
-            $stmt = $this->db->prepare(
-                "UPDATE {$this->mtable} SET rating_user = ? WHERE id = ? AND session_id = ?"
-            );
-            $stmt->bind_param('sii', $ratingJson, $userMessageId, $chatId);
-            if (!$stmt->execute() || !$this->saveContextState($chatId, $promptTokens, $trimmed)) {
+            if (($rating !== null || isset($turn['assistant'])) &&
+                !$this->saveUserRating((int)$turn['user']['id'], $rating)) {
+                throw new \RuntimeException('Cannot update user rating.');
+            }
+            if (!$this->saveContextState($chatId, $promptTokens, $trimmed)) {
                 throw new \RuntimeException('Cannot update response metadata.');
             }
             if (!$this->db->commit()) throw new \RuntimeException('Cannot commit response.');

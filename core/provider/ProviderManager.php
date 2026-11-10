@@ -151,6 +151,31 @@ final class ProviderManager
  */
   private function getLlamaCppModelOptions(): array
     {
+      $files = glob($this->getLlamaCppModelDirectory().'/*.gguf') ?: [];
+      natcasesort($files);
+
+      return array_values(array_map('basename', $files));
+    }
+
+/** List projector filenames from the same directory as the base models. */
+  public function getLlamaCppMmprojOptions(): array
+    {
+      $options = [];
+      foreach (glob($this->getLlamaCppModelDirectory().'/*') ?: [] as $path)
+        {
+          $filename = basename($path);
+          if (stripos($filename, 'mmproj') !== false && is_file($path))
+            {
+              $options[] = $filename;
+            }
+        }
+
+      natcasesort($options);
+      return array_values($options);
+    }
+
+  private function getLlamaCppModelDirectory(): string
+    {
       $modelDir = trim((string)App::get(
           'llamacpp.model_dir',
           ''
@@ -177,14 +202,7 @@ final class ProviderManager
           );
         }
 
-      $files = glob($modelDir.'/*.gguf') ?: [];
-
-      natcasesort($files);
-
-      return array_values(array_map(
-          'basename',
-          $files
-      ));
+      return $modelDir;
     }
 
 /**

@@ -203,6 +203,7 @@ public function view($var = []): void
     );
     $pagedata['models'] = $mdata['models'];
     $pagedata['image']  = $mdata['image'];
+    $pagedata['active_chat_id'] = (int)($_SESSION['chat_id'] ?? 0);
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $this->show([
         'header'   => DIR_TPL.'/header.tpl.php',
@@ -229,8 +230,8 @@ public function models($var = []): void
     if ($modelId > 0)
       {
         $template = DIR_TPL.'/model.tpl.php';
-        $model    = $this->MOD->getById($modelId);
-        if ($model === null)
+        $model    = $this->MOD->getById($modelId, true);
+        if ($model === null || (!User::isAdmin() && (int)$model['user_id'] !== User::id()))
           {
             header('Location: '.DIR_HOST.'/main/models');
             exit;
@@ -324,6 +325,13 @@ public function savemodel(): void
         header('Location: '.DIR_HOST.'/main/models/'.$modelId);
         exit;
       }
+
+    $requestedModel = (int)($_POST['id'] ?? 0);
+    if ($requestedModel > 0 && isset($_POST['psyche'], $_POST['psyche_id'])) {
+        $_SESSION['message'] = LANG['MODEL_PSYCHE_SAVE_ERROR'];
+        header('Location: '.DIR_HOST.'/main/models/'.$requestedModel);
+        exit;
+    }
 
     header('Location: '.DIR_HOST.'/main/models');
     exit;

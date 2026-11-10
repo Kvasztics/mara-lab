@@ -247,11 +247,12 @@ public function saveMessage(
  */
 public function saveUserRating(
     int $messageId,
-    array $rating
+    ?array $rating
 ): bool
   {
-    $ratingJson = json_encode(
+    $ratingJson = $rating === null ? null : json_encode(
         $rating,
+        JSON_THROW_ON_ERROR |
         JSON_UNESCAPED_UNICODE |
         JSON_UNESCAPED_SLASHES
     );

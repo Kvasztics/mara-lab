@@ -64,7 +64,7 @@
       ======================================================== -->
           <nav class="sidebar-nav sidebar-navigation">
             <a
-              href=""
+              href="<?php echo DIR_HOST.'/main/view'; ?>"
               onclick="newChat(); return false;"
               class="menu-link">
               <?= $this->icon('new-chat') ?>

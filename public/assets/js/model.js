@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', () =>
     const provider = document.getElementById('model-provider');
     const baseModel = document.getElementById('base-model');
     const modelinfo = document.getElementById('modelinfo');
+    const mmproj = document.getElementById('model-mmproj');
+    const mmprojField = document.getElementById('model-mmproj-field');
 
     if (!provider || !baseModel || !modelinfo)
       {
@@ -96,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () =>
         let savedInfo;
         try { savedInfo = JSON.parse(modelinfo.value || '{}'); } catch { savedInfo = {}; }
         const source = savedInfo._capability_source;
-        const mmproj = document.querySelector('[name="mmproj"]');
         if (savedInfo.capabilities_known === true && source &&
             source.provider === selectedProvider && source.basemodel === selectedModel &&
             source.mmproj === (mmproj?.value || '')) {
@@ -174,6 +175,20 @@ document.addEventListener('DOMContentLoaded', () =>
                 baseModel.appendChild(option);
               });
 
+            if (selectedProvider === 'llamacpp' && mmproj && Array.isArray(result.mmproj_options)) {
+                const selected = mmproj.value;
+                const options = result.mmproj_options;
+                // Keep a saved filename even if it is outside the current listing.
+                if (selected && !options.includes(selected)) {
+                    options.push(selected);
+                }
+                mmproj.replaceChildren(
+                    mmproj.options[0],
+                    ...options.map(filename => new Option(filename, filename))
+                );
+                mmproj.value = selected;
+            }
+
             provider.dataset.previousValue = selectedProvider;
             await loadModelInfo();
           }
@@ -184,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () =>
           }
         finally
           {
+            if (mmprojField) mmprojField.hidden = provider.value !== 'llamacpp';
             provider.disabled = false;
             baseModel.disabled = false;
           }
@@ -220,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () =>
       });
 
     baseModel.addEventListener('change', loadModelInfo);
-    document.querySelector('[name="mmproj"]')?.addEventListener('change', loadModelInfo);
+    mmproj?.addEventListener('change', loadModelInfo);
 
     provider.dataset.previousValue = provider.value;
     loadModels(provider.value, provider.value);

@@ -171,6 +171,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
     psycheSwitch.addEventListener('change', updatePsyche);
 
+    const selection = document.getElementById('psyche-id');
+    const version = document.getElementById('psyche-version');
+    const insert = document.getElementById('psyche-insert');
+    const entries = psycheContent.querySelectorAll('[data-psyche]');
+    entries.forEach(entry => entry.addEventListener('click', () => {
+        const record = JSON.parse(entry.dataset.psyche);
+        selection.value = record.id;
+        version.value = record.version;
+        document.getElementById('psyche-prompt').value = record.prompt;
+        document.getElementById('psyche-memory').value = record.memory;
+        document.getElementById('psyche-reason').value = record.reason;
+        insert.checked = false;
+        insert.disabled = entry.dataset.current !== '1';
+        entries.forEach(item => {
+            item.classList.toggle('active', item === entry);
+            item.setAttribute('aria-pressed', String(item === entry));
+        });
+    }));
+
     updatePsyche();
 
 });
