@@ -152,6 +152,9 @@ final class ProviderManager
   private function getLlamaCppModelOptions(): array
     {
       $files = glob($this->getLlamaCppModelDirectory().'/*.gguf') ?: [];
+      $files = array_filter($files, static fn(string $path): bool =>
+          stripos(basename($path), 'mmproj') === false
+      );
       natcasesort($files);
 
       return array_values(array_map('basename', $files));

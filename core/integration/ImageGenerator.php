@@ -16,7 +16,8 @@ final class ImageGenerator
         int $timeout = 600,
         int $userId = 0,
         string $jobId = '',
-        string $mode = 'txt2img'
+        string $mode = 'txt2img',
+        string $fallbackUrlTemplate = ''
     ): array {
         if (!in_array($backend, ['forge', 'qwen2'], true)) {
             throw new \RuntimeException('Unknown image backend.');
@@ -81,6 +82,7 @@ final class ImageGenerator
             throw new \RuntimeException('Cannot initialize image request.');
         }
 
+        $externalImage = null;
         try {
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
@@ -97,32 +99,37 @@ final class ImageGenerator
             $response = curl_exec($ch);
 
             if ($response === false) {
-                throw new \RuntimeException(
-                    'Image generation error: ' . curl_error($ch)
-                );
-            }
-
-            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            if ($httpCode < 200 || $httpCode >= 300) {
-                throw new \RuntimeException(
-                    'Image generation HTTP error: ' . $httpCode
-                );
+                if ($mode !== 'txt2img' || $fallbackUrlTemplate === '' ||
+                    !in_array(curl_errno($ch), [CURLE_COULDNT_CONNECT, CURLE_COULDNT_RESOLVE_HOST], true) ||
+                    $job->wasCancelled()) {
+                    throw new \RuntimeException('Image generation error: ' . curl_error($ch));
+                }
+                $externalImage = $this->fetchExternalImage($fallbackUrlTemplate, $prompt);
+            } else {
+                $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                if ($httpCode < 200 || $httpCode >= 300) {
+                    throw new \RuntimeException('Image generation HTTP error: ' . $httpCode);
+                }
             }
         } finally {
             curl_close($ch);
         }
 
-        $result = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
-        $encodedImages = $mode === 'extra-single-image'
-            ? (isset($result['image']) && is_string($result['image']) && $result['image'] !== ''
-                ? [$result['image']] : [])
-            : ($result['images'] ?? null);
+        if ($externalImage !== null) {
+            $imageValues = [$externalImage];
+        } else {
+            $result = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
+            $imageValues = $mode === 'extra-single-image'
+                ? (isset($result['image']) && is_string($result['image']) && $result['image'] !== ''
+                    ? [$result['image']] : [])
+                : ($result['images'] ?? null);
+        }
         $cancelled = $job->wasCancelled();
 
         if (
-            !is_array($encodedImages) ||
-            !array_is_list($encodedImages) ||
-            $encodedImages === []
+            !is_array($imageValues) ||
+            !array_is_list($imageValues) ||
+            $imageValues === []
         ) {
             if ($cancelled) {
                 return [
@@ -136,7 +143,7 @@ final class ImageGenerator
         }
 
         // Forge can prepend a composite grid before the individual images.
-        if ($backend === 'forge') {
+        if ($backend === 'forge' && $externalImage === null) {
             $info = $result['info'] ?? [];
             if (is_string($info)) {
                 $info = json_decode($info, true);
@@ -147,9 +154,9 @@ final class ImageGenerator
             if (
                 is_int($first) &&
                 $first > 0 &&
-                $first < count($encodedImages)
+                    $first < count($imageValues)
             ) {
-                $encodedImages = array_slice($encodedImages, $first);
+                    $imageValues = array_slice($imageValues, $first);
             }
         }
 
@@ -157,25 +164,31 @@ final class ImageGenerator
         $savedFiles = [];
 
         try {
-            foreach ($encodedImages as $encoded) {
-                if (!is_string($encoded) || $encoded === '') {
+            foreach ($imageValues as $value) {
+                if (!is_string($value) || $value === '') {
                     throw new \RuntimeException('Invalid encoded image.');
                 }
 
-                if (str_starts_with($encoded, 'data:image/')) {
-                    $comma = strpos($encoded, ',');
+                if ($externalImage === null && str_starts_with($value, 'data:image/')) {
+                    $comma = strpos($value, ',');
                     if ($comma === false) {
                         throw new \RuntimeException('Invalid image data URI.');
                     }
-                    $encoded = substr($encoded, $comma + 1);
+                    $value = substr($value, $comma + 1);
                 }
 
-                $imageData = base64_decode($encoded, true);
+                $imageData = $externalImage === null ? base64_decode($value, true) : $value;
                 if ($imageData === false || $imageData === '') {
                     throw new \RuntimeException('Invalid generated image data.');
                 }
 
                 $imageInfo = @getimagesizefromstring($imageData);
+                if ($externalImage !== null && (
+                    ($imageInfo[0] ?? 0) !== 512 || ($imageInfo[1] ?? 0) !== 512 ||
+                    !in_array($imageInfo['mime'] ?? '', ['image/png', 'image/jpeg', 'image/webp'], true)
+                )) {
+                    throw new \RuntimeException(LANG['IMAGE_EXTERNAL_INVALID']);
+                }
                 $extension = match ($imageInfo['mime'] ?? '') {
                     'image/png' => 'png',
                     'image/jpeg' => 'jpg',
@@ -209,5 +222,49 @@ final class ImageGenerator
             'images' => $images,
             'cancelled' => $cancelled,
         ];
+    }
+
+    private function fetchExternalImage(string $template, string $prompt): string
+    {
+        // Substitute only in the path or query, keeping the configured host fixed.
+        $parts = parse_url($template);
+        $promptLocation = ($parts['path'] ?? '') . '?' . ($parts['query'] ?? '');
+        $url = str_replace('{prompt}', rawurlencode($prompt), $template);
+        if (substr_count($template, '{prompt}') !== 1 ||
+            !str_contains($promptLocation, '{prompt}') ||
+            ($parts['scheme'] ?? '') !== 'https' ||
+            isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment']) ||
+            filter_var($url, FILTER_VALIDATE_URL) === false) {
+            throw new \RuntimeException(LANG['IMAGE_EXTERNAL_TEMPLATE']);
+        }
+
+        $body = '';
+        $ch = curl_init($url);
+        if ($ch === false) {
+            throw new \RuntimeException(LANG['IMAGE_EXTERNAL_REQUEST']);
+        }
+
+        try {
+            curl_setopt_array($ch, [
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT => 90,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_HTTPHEADER => ['Accept: image/png, image/jpeg, image/webp'],
+                CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body): int {
+                    $length = strlen($chunk);
+                    if (strlen($body) + $length > 8 * 1024 * 1024) return 0;
+                    $body .= $chunk;
+                    return $length;
+                },
+            ]);
+            $ok = curl_exec($ch);
+            $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            if ($ok === false || $status < 200 || $status >= 300 || $body === '') {
+                throw new \RuntimeException(LANG['IMAGE_EXTERNAL_REQUEST']);
+            }
+            return $body;
+        } finally {
+            curl_close($ch);
+        }
     }
 }

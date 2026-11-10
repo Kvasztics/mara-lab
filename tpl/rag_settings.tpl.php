@@ -14,7 +14,7 @@
             <header class="model-editor-header">
                 <div>
                     <h1 class="model-editor-title">
-                        <?php echo $title; ?>
+                        <?php echo htmlspecialchars($title, ENT_QUOTES, "UTF-8"); ?>
                     </h1>
                     <p class="model-editor-description">
                         <?php echo LANG['KNOW_EDIT']; ?>
@@ -45,7 +45,7 @@
                         type="text"
                         id="knowledge-title"
                         name="title"
-                        value="<?php echo $title; ?>"
+                        value="<?php echo htmlspecialchars($title, ENT_QUOTES, "UTF-8"); ?>"
                         placeholder="<?php echo LANG['KNOW_TITLE_PLH']; ?>">
                 </div>
                 <!-- MODEL -->
@@ -84,7 +84,7 @@
                     <textarea
                         id="knowledge-content"
                         name="content"
-                        placeholder="<?php echo LANG['KNOW_CONTENT_PLH']; ?>"><?php echo $content; ?></textarea>
+                        placeholder="<?php echo LANG['KNOW_CONTENT_PLH']; ?>"><?php echo htmlspecialchars($content, ENT_QUOTES, "UTF-8"); ?></textarea>
                 </div>
             </div>
         </form>

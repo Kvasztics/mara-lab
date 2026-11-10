@@ -661,6 +661,11 @@ public function rag($var = []): void
     $pagedata['models'] = $mdata['models'];
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $pagedata['knowledge'] = $this->RAG->getList();
+    if (User::isAdmin()) {
+        $_SESSION['rag_embedding_csrf'] ??= bin2hex(random_bytes(32));
+        $pagedata['embeddingToken'] = $_SESSION['rag_embedding_csrf'];
+        $pagedata['embeddingConfig'] = $this->RAG->embeddingConfig();
+    }
     $template = DIR_TPL.'/rag.tpl.php';
     $this->show([
         'header'   => DIR_TPL.'/header.tpl.php',
@@ -670,6 +675,35 @@ public function rag($var = []): void
         'pagedata' => $pagedata
     ]);
   }
+public function ragembeddingsave(): void
+  {
+    User::loggedIn();
+    $token = $_POST['csrf_token'] ?? null;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !User::isAdmin() ||
+        !is_string($token) || !isset($_SESSION['rag_embedding_csrf']) ||
+        !hash_equals($_SESSION['rag_embedding_csrf'], $token)) {
+        http_response_code(403);
+        return;
+    }
+
+    @set_time_limit(240);
+    try {
+        $provider = is_string($_POST['embedding_provider'] ?? null) ? $_POST['embedding_provider'] : '';
+        $model = is_string($_POST['embedding_model'] ?? null) ? $_POST['embedding_model'] : '';
+        $port = filter_var($_POST['embedding_port'] ?? null, FILTER_VALIDATE_INT);
+        $count = $this->RAG->configureEmbedding($provider, $model, (int)$port);
+        $_SESSION['message'] = sprintf(LANG['RAG_EMBEDDING_SAVED'], $count);
+    } catch (EmbeddingException $error) {
+        $_SESSION['message'] = sprintf(LANG['RAG_EMBEDDING_SAVE_ERROR'], $error->getMessage());
+    } catch (\Throwable $error) {
+        error_log('Mara RAG reindex: '.$error->getMessage());
+        $_SESSION['message'] = LANG['RAG_EMBEDDING_REINDEX_ERROR'];
+    }
+
+    header('Location: '.DIR_HOST.'/main/rag', true, 303);
+    exit;
+  }
+
 /**
  * New Rag data
  * @param array $var
@@ -686,10 +720,10 @@ public function ragnew($var = []): void
     $pagedata['action'] = DIR_HOST.'/main/ragsave';
 
     $pagedata['id']      = 0;
-    $pagedata['title']   = '';
-    $pagedata['content'] = '';
+    $pagedata['title']   = (string)($var['title'] ?? '');
+    $pagedata['content'] = (string)($var['content'] ?? '');
     $pagedata['isAdmin'] = User::isAdmin();
-    $pagedata['user_id'] = User::id();
+    $pagedata['user_id'] = (int)($var['user_id'] ?? User::id());
 
     $this->show([
         'header'   => DIR_TPL.'/header.tpl.php',
@@ -744,6 +778,12 @@ public function ragsave($var = []): void
 
         exit;
       }
+    catch (EmbeddingException $error)
+      {
+        http_response_code(503);
+        $_SESSION['message'] = $error->getMessage();
+        $this->ragnew(['title' => $title, 'content' => $content, 'user_id' => $userId]);
+      }
     catch (\Throwable $e)
       {
         error_log(
@@ -763,7 +803,14 @@ public function ragdelete($var = []): void
   {
     User::loggedIn();
     $ragId = (int)($_POST['id'] ?? 0);
-    $success = $this->RAG->delete($ragId);
+    try {
+        $success = $this->RAG->delete($ragId);
+    } catch (EmbeddingException $error) {
+        http_response_code(503);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => $error->getMessage()], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     header('Content-Type: application/json');
     echo json_encode([
         'success' => $success

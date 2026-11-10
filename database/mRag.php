@@ -20,6 +20,60 @@ class mRag
         $this->db = Database::getInstance()->getConnection();
       }
 
+    // Keep embedding settings and indexed vectors in the same generation.
+    public function withEmbeddingIndex(callable $operation): mixed
+      {
+        $lock = 'mara-rag-'.substr(hash('sha256', DB_NAME), 0, 48);
+        $result = $this->db->execute_query('SELECT GET_LOCK(?, 2)', [$lock]);
+        if ((int)$result->fetch_row()[0] !== 1) {
+            throw new \mara\core\EmbeddingException(LANG['RAG_EMBEDDING_BUSY']);
+        }
+
+        try {
+            return $operation();
+        } finally {
+            $this->db->execute_query('SELECT RELEASE_LOCK(?)', [$lock]);
+        }
+      }
+
+    public function saveEmbeddingConfig(array $config): void
+      {
+        foreach (['provider', 'model', 'port'] as $key) {
+            $setting = 'embedding_'.$key;
+            $row = $this->db->execute_query(
+                "SELECT id FROM settings WHERE type = 'system' AND datakey = ? ORDER BY id DESC LIMIT 1",
+                [$setting]
+            )->fetch_row();
+            if ($row === null) {
+                $this->db->execute_query(
+                    "INSERT INTO settings (type, datakey, datavalue) VALUES ('system', ?, ?)",
+                    [$setting, (string)$config[$key]]
+                );
+            } else {
+                $this->db->execute_query(
+                    "UPDATE settings SET datavalue = ? WHERE type = 'system' AND datakey = ?",
+                    [(string)$config[$key], $setting]
+                );
+            }
+        }
+      }
+
+    public function chunksForReindex(): iterable
+      {
+        $rows = $this->db->query('SELECT id, content FROM rag_chunks ORDER BY id');
+        while ($row = $rows->fetch_assoc()) {
+            yield $row;
+        }
+      }
+
+    public function updateChunkEmbedding(int $id, array $embedding): void
+      {
+        $this->db->execute_query(
+            'UPDATE rag_chunks SET embedding = ? WHERE id = ?',
+            [json_encode($embedding, JSON_THROW_ON_ERROR), $id]
+        );
+      }
+
     /**
      * Create RAG document
      * @param int $userId

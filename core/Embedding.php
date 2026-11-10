@@ -11,9 +11,9 @@ final class Embedding
 {
     private EmbeddingProvider $provider;
 
-    public function __construct()
+    public function __construct(array $config)
       {
-        $this->provider = EmbeddingFactory::create();
+        $this->provider = EmbeddingFactory::create($config);
       }
 
     /**

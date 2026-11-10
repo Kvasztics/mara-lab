@@ -20,7 +20,6 @@ use mara\core\Embedding;
 final class Rag
 {
     private mRag $db;
-    private Embedding $embedding;
 /**
  * Construct
  * @access public
@@ -29,8 +28,62 @@ final class Rag
 public function __construct()
   {
     $this->db = new mRag();
-    $this->embedding = new Embedding();
   }
+public function embeddingConfig(): array
+  {
+    $settings = (new Settings())->values('system');
+    return [
+        'provider' => strtolower(trim((string)($settings['embedding_provider'] ?? 'ollama'))),
+        'model' => trim((string)($settings['embedding_model'] ?? '')),
+        'port' => (int)($settings['embedding_port'] ?? 8083),
+    ];
+  }
+
+public function configureEmbedding(string $provider, string $model, int $port): int
+  {
+    $provider = trim($provider);
+    $model = trim($model);
+    if (!in_array($provider, ['ollama', 'llamacpp'], true) || $model === '' ||
+        strlen($model) > 255 || ($provider === 'llamacpp' && ($port < 1 || $port > 65535))) {
+        throw new EmbeddingException(LANG['RAG_EMBEDDING_CONFIG_ERROR']);
+    }
+
+    return $this->db->withEmbeddingIndex(function () use ($provider, $model, $port): int {
+        $previous = $this->embeddingConfig();
+        $config = [
+            'provider' => $provider,
+            'model' => $model,
+            'port' => $provider === 'llamacpp' ? $port : $previous['port'],
+        ];
+        if ($config === $previous) {
+            return 0;
+        }
+
+        $embedding = new Embedding($config);
+        $dimensions = count($embedding->embed('Mara RAG'));
+        $this->db->begin();
+
+        try {
+            $count = 0;
+            foreach ($this->db->chunksForReindex() as $chunk) {
+                $vector = $embedding->embed($chunk['content']);
+                if (count($vector) !== $dimensions) {
+                    throw new EmbeddingException(LANG['RAG_EMBEDDING_DIMENSIONS']);
+                }
+                $this->db->updateChunkEmbedding((int)$chunk['id'], $vector);
+                ++$count;
+            }
+
+            $this->db->saveEmbeddingConfig($config);
+            $this->db->commit();
+            return $count;
+        } catch (\Throwable $error) {
+            $this->db->rollback();
+            throw $error;
+        }
+    });
+  }
+
 /**
  * Get all RAG documents for user
  * @return array
@@ -70,14 +123,8 @@ public function delete(int $ragId): bool
       {
         return false;
       }
-    if (User::isAdmin())
-      {
-        return $this->db->deleteDocument($ragId);
-      }
-    return $this->db->deleteDocument(
-        $ragId,
-        User::id()
-    );
+    $userId = User::isAdmin() ? null : User::id();
+    return $this->db->withEmbeddingIndex(fn(): bool => $this->db->deleteDocument($ragId, $userId));
   }
 /**
  * Add knowledge item
@@ -117,9 +164,11 @@ public function add(
         );
       }
 
-    $this->db->begin();
+    return $this->db->withEmbeddingIndex(function () use ($userId, $title, $source, $chunks): int {
+      $embeddingService = new Embedding($this->embeddingConfig());
+      $this->db->begin();
 
-    try
+      try
       {
         $documentId = $this->db->createDocument(
             $userId,
@@ -129,17 +178,7 @@ public function add(
 
         foreach ($chunks as $chunkIndex => $chunkContent)
           {
-            $embedding = $this->embedding->embed(
-                $chunkContent
-            );
-
-            if (empty($embedding))
-              {
-                throw new \RuntimeException(
-                    'Embedding generation failed for chunk '
-                    .$chunkIndex.'.'
-                );
-              }
+            $embedding = $embeddingService->embed($chunkContent);
 
             $this->db->saveChunk(
                 $documentId,
@@ -153,12 +192,13 @@ public function add(
 
         return $documentId;
       }
-    catch (\Throwable $e)
+      catch (\Throwable $e)
       {
         $this->db->rollback();
 
         throw $e;
       }
+    });
   }
 /** 
  * Split text into overlapping chunks on sentence boundaries.
@@ -294,23 +334,16 @@ public function search(
         return [];
       }
 
-    /*
-     * Create embedding for user query
-     */
-    $queryEmbedding = $this->embedding->embed($query);
-
-    if (empty($queryEmbedding))
-      {
+    [$config, $chunks] = $this->db->withEmbeddingIndex(fn(): array => [
+        $this->embeddingConfig(),
+        $this->db->getChunks(User::id(), $ragIds),
+    ]);
+    if ($chunks === []) {
         return [];
-      }
+    }
 
-    /*
-     * Load selected RAG chunks
-     */
-    $chunks = $this->db->getChunks(
-        User::id(),
-        $ragIds
-    );
+    $embedding = new Embedding($config);
+    $queryEmbedding = $embedding->embed($query);
 
     $results = [];
 
@@ -319,7 +352,11 @@ public function search(
      */
     foreach ($chunks as $chunk)
       {
-        $score = $this->embedding->similarity(
+        if (count($chunk['embedding']) !== count($queryEmbedding)) {
+            throw new EmbeddingException(LANG['RAG_EMBEDDING_DIMENSIONS']);
+        }
+
+        $score = $embedding->similarity(
             $queryEmbedding,
             $chunk['embedding']
         );

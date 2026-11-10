@@ -10,6 +10,7 @@ final class CharacterCardMapper
         'presence_penalty', 'repeat_penalty', 'top_p', 'top_k', 'min_p',
         'max_tokens', 'num_ctx', 'context_limit',
         'dry_multiplier', 'dry_base', 'dry_allowed_length', 'dry_penalty_last_n',
+        'dynatemp_range', 'dynatemp_exponent',
     ];
 
     public static function toModel(\stdClass $card, int $userId): array

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace mara\core\tools;
 
+use mara\core\User;
+
 /*------------------------------------------------------------------------------
 ** File:        GenerateImage.tool.php
 ** Class:       GenerateImage
@@ -99,6 +101,12 @@ public function execute(
         throw new \RuntimeException('Missing image prompt.');
     }
 
+    $userId = User::id();
+    if ($userId <= 0) {
+        throw new \RuntimeException(LANG['IMG_ERROR_CSRF']);
+    }
+    $userDirectory = '/user_' . $userId;
+
     $config = require __DIR__ . '/GenerateImage.config.php';
 
     $backend = trim((string)\mara\core\App::get(
@@ -115,7 +123,8 @@ public function execute(
     }
 
     $timeout = max(1, (int)($profile['timeout'] ?? 600));
-    @set_time_limit($timeout + 30);
+    $fallback = trim((string)\mara\core\App::get('system.external_image_gen', ''));
+    @set_time_limit(max($timeout, $fallback !== '' ? 100 : 0) + 30);
 
     $generator = new \mara\core\integration\ImageGenerator();
 
@@ -123,9 +132,11 @@ public function execute(
         $backend,
         $prompt,
         $profile['request'],
-        (string)($config['save_path'] ?? ''),
-        (string)($config['public_path'] ?? ''),
-        $timeout
+        $config['save_path'] . $userDirectory,
+        $config['public_path'] . $userDirectory,
+        $timeout,
+        userId: $userId,
+        fallbackUrlTemplate: $fallback
     );
   }
 

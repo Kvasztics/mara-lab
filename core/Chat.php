@@ -238,6 +238,7 @@ private function processSend(array $input, ?array $turn = null): array
             session_write_close();
           }
 
+    $embeddingError = null;
     try {
         $turn ??= $this->db->unansweredTurn($chatId, $modelId, $messageId);
         if ($turn === null) {
@@ -249,7 +250,8 @@ private function processSend(array $input, ?array $turn = null): array
             throw $error;
         }
         error_log('Mara chat: '.$error->getMessage());
-        $result = ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
+        $embeddingError = $error instanceof EmbeddingException ? $error->getMessage() : null;
+        $result = ['success' => false, 'error' => $embeddingError ?? LANG['CHAT_TURN_ERROR']];
     } finally {
         Status::clear();
     }
@@ -257,7 +259,7 @@ private function processSend(array $input, ?array $turn = null): array
     if (empty($result['success']) && $newUserMessage) {
         $unanswered = $this->db->unansweredTurn($chatId, $modelId, $messageId);
         if ($unanswered !== null) {
-            $result['error'] = LANG['CHAT_TURN_NO_REPLY'];
+            $result['error'] = $embeddingError ?? LANG['CHAT_TURN_NO_REPLY'];
             $result['user_html'] = $this->renderUserMessage($unanswered['user']);
             $result['titles'] = $this->chat_titles($modelId);
         }

@@ -637,6 +637,66 @@
             </div>
 
 
+            <!-- NUM CTX -->
+
+            <div class="parameter-item range-group">
+
+                <div class="parameter-header">
+                    <div>
+                        <label for="param-num-ctx">
+                            <?php echo LANG['MODEL_PARAM_NUM_CTX']; ?>
+                        </label>
+
+                        <span class="parameter-help">
+                            <?php echo LANG['MODEL_PARAM_NUM_CTX_HELP']; ?>
+                        </span>
+                    </div>
+
+                    <input
+                        type="number"
+                        class="range-number"
+                        min="1024"
+                        max="131072"
+                        step="1024"
+                        value="<?php echo (int)($parameters['num_ctx'] ?? 4096); ?>">
+                </div>
+
+                <input
+                    type="range"
+                    id="param-num-ctx"
+                    name="num_ctx"
+                    min="1024"
+                    max="131072"
+                    step="1024"
+                    value="<?php echo (int)($parameters['num_ctx'] ?? 4096); ?>">
+            </div>
+
+
+            <?php foreach ([
+                ['dynatemp_range', 'RANGE', '0', 2],
+                ['dynatemp_exponent', 'EXPONENT', '1', 5],
+            ] as [$key, $label, $default, $max]):
+                $value = htmlspecialchars((string)($parameters[$key] ?? ''), ENT_QUOTES, 'UTF-8');
+                $disabled = ($provider ?? '') === 'llamacpp' ? '' : 'disabled';
+            ?>
+                <div class="parameter-item range-group" data-llamacpp-sampler data-range-optional
+                     <?= $disabled === '' ? '' : 'hidden' ?>>
+                    <div class="parameter-header">
+                        <div>
+                            <label for="param-<?= $key ?>"><?= LANG['MODEL_DYNATEMP_' . $label] ?></label>
+                            <span class="parameter-help"><?= LANG['MODEL_DYNATEMP_' . $label . '_HELP'] ?></span>
+                        </div>
+                        <input type="number" class="range-number" id="param-<?= $key ?>" name="<?= $key ?>"
+                               min="0" step="any" placeholder="<?= $default ?>"
+                               value="<?= $value ?>" <?= $disabled ?>>
+                    </div>
+                    <input type="range" min="0" max="<?= $max ?>" step="0.01"
+                           aria-label="<?= htmlspecialchars(LANG['MODEL_DYNATEMP_' . $label], ENT_QUOTES, 'UTF-8') ?>"
+                           data-default="<?= $default ?>" value="<?= $value !== '' ? $value : $default ?>"
+                           <?= $disabled ?>>
+                </div>
+            <?php endforeach; ?>
+
             <!-- REPEAT PENALTY -->
 
             <div class="parameter-item range-group">
@@ -897,41 +957,6 @@
                     max="2"
                     step="0.05"
                     value="<?php echo htmlspecialchars($parameters['frequency_penalty'] ?? 0); ?>">
-            </div>
-
-
-            <!-- NUM CTX -->
-
-            <div class="parameter-item range-group">
-
-                <div class="parameter-header">
-                    <div>
-                        <label for="param-num-ctx">
-                            <?php echo LANG['MODEL_PARAM_NUM_CTX']; ?>
-                        </label>
-
-                        <span class="parameter-help">
-                            <?php echo LANG['MODEL_PARAM_NUM_CTX_HELP']; ?>
-                        </span>
-                    </div>
-
-                    <input
-                        type="number"
-                        class="range-number"
-                        min="1024"
-                        max="131072"
-                        step="1024"
-                        value="<?php echo (int)($parameters['num_ctx'] ?? 4096); ?>">
-                </div>
-
-                <input
-                    type="range"
-                    id="param-num-ctx"
-                    name="num_ctx"
-                    min="1024"
-                    max="131072"
-                    step="1024"
-                    value="<?php echo (int)($parameters['num_ctx'] ?? 4096); ?>">
             </div>
 
 

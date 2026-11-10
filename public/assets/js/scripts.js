@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const range  = group.querySelector('input[type="range"]');
         const number = group.querySelector('.range-number');
+        const optional = group.hasAttribute('data-range-optional');
 
         if (!range || !number) {
             return;
@@ -77,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function () {
         number.addEventListener('input', function () {
 
             if (number.value === '') {
+                if (optional) range.value = range.dataset.default;
                 return;
             }
 
@@ -96,6 +98,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Elhagyáskor igazítsuk a tényleges sliderértékhez
         number.addEventListener('change', function () {
+
+            if (optional) return;
 
             if (number.value === '') {
                 number.value = range.value;
@@ -955,9 +959,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                         if (!result.success)
                           {
-                            throw new Error(
-                                'Knowledge delete failed'
-                            );
+                            if (result.error) _alert(result.error);
+                            throw new Error(result.error || 'Knowledge delete failed');
                           }
 
                         window.location.reload();

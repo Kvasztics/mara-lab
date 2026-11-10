@@ -200,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () =>
         finally
           {
             if (mmprojField) mmprojField.hidden = provider.value !== 'llamacpp';
+            updateProviderControls();
             provider.disabled = false;
             baseModel.disabled = false;
           }
@@ -210,10 +211,14 @@ document.addEventListener('DOMContentLoaded', () =>
     const runtimePanel = document.querySelector('[data-model-panel="runtime"]');
     const generalTab = document.querySelector('[data-model-tab="general"]');
 
-    const updateRuntimeTab = () => {
-      if (!runtimeTab || !runtimePanel) return;
-
+    const samplingFields = document.querySelectorAll('[data-llamacpp-sampler]');
+    const updateProviderControls = () => {
       const supported = provider.value === 'llamacpp';
+      samplingFields.forEach(field => {
+        field.hidden = !supported;
+        field.querySelectorAll('input').forEach(input => { input.disabled = !supported; });
+      });
+      if (!runtimeTab || !runtimePanel) return;
       runtimeTab.hidden = !supported;
 
       if (!supported && runtimeTab.classList.contains('active')) {
@@ -223,8 +228,8 @@ document.addEventListener('DOMContentLoaded', () =>
       if (!supported) runtimePanel.hidden = true;
     };
 
-    updateRuntimeTab();
-    provider.addEventListener('change', updateRuntimeTab);
+    updateProviderControls();
+    provider.addEventListener('change', updateProviderControls);
 
     provider.addEventListener('change', async () =>
       {

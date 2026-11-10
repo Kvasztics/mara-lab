@@ -23,6 +23,7 @@ class LlamaCppProvider implements ProviderInterface
     private string $startupError = '';
     private int $launchedPid = 0;
     private int $startupLogOffset = 0;
+    private array $dynamicTemperatureSupport = [];
 
     public function getStartupError(): string { return $this->startupError; }
 
@@ -549,7 +550,7 @@ private function ggufQuantization(int $fileType, string $filename): string
         $payload = array_merge([
             'model'    => $this->modelId,
             'messages' => $messages,
-        ], $options);
+        ], $this->filterSamplingOptions($options));
 
         if (!empty($tools))
           {
@@ -597,13 +598,43 @@ private function ggufQuantization(int $fileType, string $filename): string
         );
     }
 
-    /**
-     * HTTP request a llama.cpp API felé.
-     */
+    /** Forward only dynamic temperature options advertised by the running server. */
+    private function filterSamplingOptions(array $options): array
+    {
+        unset($options['smoothing_type'], $options['smoothing_factor']);
+        $keys = ['dynatemp_range', 'dynatemp_exponent'];
+        if (array_intersect($keys, array_keys($options)) === []) {
+            return $options;
+        }
+
+        $model = $this->modelId;
+        if (!isset($this->dynamicTemperatureSupport[$model])) {
+            $endpoint = $this->mode === 'router' ? '/props?model=' . rawurlencode($model) : '/props';
+            try {
+                $props = $this->request('GET', $endpoint, timeout: 2);
+                $defaults = $props['default_generation_settings']['params'] ?? null;
+                $this->dynamicTemperatureSupport[$model] = is_array($defaults)
+                    ? array_intersect_key($defaults, array_flip($keys)) : [];
+            } catch (\Throwable) {
+                $this->dynamicTemperatureSupport[$model] = [];
+            }
+        }
+
+        foreach ($keys as $key) {
+            if (!is_int($this->dynamicTemperatureSupport[$model][$key] ?? null) &&
+                !is_float($this->dynamicTemperatureSupport[$model][$key] ?? null)) {
+                unset($options[$key]);
+            }
+        }
+        return $options;
+    }
+
+    /** HTTP request a llama.cpp API felé. */
     private function request(
         string $method,
         string $endpoint,
-        ?array $payload = null
+        ?array $payload = null,
+        ?int $timeout = null
     ): array {
         $tracked = $method === 'POST' && $endpoint === '/v1/chat/completions';
         $requestId = uniqid('llamacpp-', true);
@@ -642,7 +673,7 @@ private function ggufQuantization(int $fileType, string $filename): string
                     'Accept: application/json',
                 ],
                 CURLOPT_CONNECTTIMEOUT => 2,
-                CURLOPT_TIMEOUT => $method === 'GET' && in_array($endpoint, ['/v1/models', '/health'], true) ? 2 : 600,
+                CURLOPT_TIMEOUT => $timeout ?? ($method === 'GET' && in_array($endpoint, ['/v1/models', '/health'], true) ? 2 : 600),
             ];
 
             if ($payload !== null) {

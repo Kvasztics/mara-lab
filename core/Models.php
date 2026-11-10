@@ -408,6 +408,17 @@ public function save(array $input, ?string $cardData = null): int|false
       ? $this->decodeArray($model['parameters'] ?? [])
       : [];
 
+    foreach (['dynatemp_range', 'dynatemp_exponent'] as $key) {
+      $value = $previousParameters[$key] ?? null;
+      if (trim((string)($input['provider'] ?? '')) === 'llamacpp' && array_key_exists($key, $input)) {
+        $value = $input[$key];
+      }
+      if (is_numeric($value) && is_finite((float)$value) && (float)$value >= 0 &&
+          (float)$value <= 3.402823466e38) {
+        $parameters[$key] = (float)$value;
+      }
+    }
+
     $previousRuntime = $previousParameters['runtime'] ?? [];
     $runtime = is_array($previousRuntime) ? $previousRuntime : [];
 

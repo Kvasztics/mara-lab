@@ -57,7 +57,8 @@ class chat_ajax
       } catch (\Throwable $error) {
           error_log('Mara chat turn action: '.$error->getMessage());
           http_response_code(500);
-          $result = ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
+          $result = ['success' => false, 'error' => $error instanceof EmbeddingException
+              ? $error->getMessage() : LANG['CHAT_TURN_ERROR']];
       }
       echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
   }
