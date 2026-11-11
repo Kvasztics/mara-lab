@@ -51,9 +51,9 @@ class Chat
  * @param array $input
  * @return array
  */
-public function send(array $input): array
+public function send(array $input, ?\Closure $onText = null): array
   {
-    return $this->processSend($input);
+    return $this->processSend($input, onText: $onText);
   }
 
 public function regenerate(int $assistantId, array $input): array
@@ -118,7 +118,7 @@ public function deleteTurn(int $assistantId): array
     ];
   }
 
-private function processSend(array $input, ?array $turn = null): array
+private function processSend(array $input, ?array $turn = null, ?\Closure $onText = null): array
   {
     $modelId = (int)($_SESSION['model_id'] ?? 0);
     $chatId  = (int)($_SESSION['chat_id'] ?? 0);
@@ -128,6 +128,25 @@ private function processSend(array $input, ?array $turn = null): array
         $input['image_path'] = $turn['user']['image_user'] ?? '';
     }
     $message = trim((string)($input['message'] ?? ''));
+    $titleMessage = $message;
+    if ($newUserMessage && isset($input['document_text'])) {
+        if (!is_string($input['document_text']) || !is_string($input['document_name'] ?? null)) {
+            return ['success' => false, 'error' => LANG['CHAT_DOCUMENT_UPLOAD_ERROR']];
+        }
+        try {
+            $name = ChatDocument::name($input['document_name']);
+            $text = ChatDocument::text($input['document_text']);
+        } catch (\RuntimeException $error) {
+            return ['success' => false, 'error' => $error->getMessage()];
+        }
+        $titleMessage = $message !== '' ? $message : $name;
+        $message = ($message !== '' ? $message."\n\n" : LANG['CHAT_DOCUMENT_DEFAULT_PROMPT']."\n\n")
+            .sprintf(LANG['CHAT_DOCUMENT_LABEL'], $name)."\n".$text;
+        if (strlen($message) > 65535) {
+            return ['success' => false, 'error' => LANG['CHAT_DOCUMENT_TEXT_LIMIT']];
+        }
+    }
+
 
     if ($chatId > 0) {
         $ownedChat = $this->db->getChat($chatId);
@@ -178,7 +197,7 @@ private function processSend(array $input, ?array $turn = null): array
           * session + system message + first user message
           * in one transaction.
           */
-          $name = mb_substr($message, 0, 80);
+          $name = mb_substr($titleMessage, 0, 80);
 
           $conversation = $this->db->createConversation(
               $modelId,
@@ -238,20 +257,21 @@ private function processSend(array $input, ?array $turn = null): array
             session_write_close();
           }
 
-    $embeddingError = null;
+    $replyError = null;
     try {
         $turn ??= $this->db->unansweredTurn($chatId, $modelId, $messageId);
         if ($turn === null) {
             return ['success' => false, 'error' => LANG['CHAT_TURN_ERROR']];
         }
-        $result = $this->generateReply($chatId, $model, $input, $turn, $newUserMessage);
+        $result = $this->generateReply($chatId, $model, $input, $turn, $newUserMessage, $onText);
     } catch (\Throwable $error) {
         if (!$newUserMessage) {
             throw $error;
         }
         error_log('Mara chat: '.$error->getMessage());
-        $embeddingError = $error instanceof EmbeddingException ? $error->getMessage() : null;
-        $result = ['success' => false, 'error' => $embeddingError ?? LANG['CHAT_TURN_ERROR']];
+        $replyError = $error instanceof EmbeddingException ? $error->getMessage() :
+            ($onText !== null ? LANG['CHAT_STREAM_INTERRUPTED'] : null);
+        $result = ['success' => false, 'error' => $replyError ?? LANG['CHAT_TURN_ERROR']];
     } finally {
         Status::clear();
     }
@@ -259,7 +279,7 @@ private function processSend(array $input, ?array $turn = null): array
     if (empty($result['success']) && $newUserMessage) {
         $unanswered = $this->db->unansweredTurn($chatId, $modelId, $messageId);
         if ($unanswered !== null) {
-            $result['error'] = $embeddingError ?? LANG['CHAT_TURN_NO_REPLY'];
+            $result['error'] = $replyError ?? LANG['CHAT_TURN_NO_REPLY'];
             $result['user_html'] = $this->renderUserMessage($unanswered['user']);
             $result['titles'] = $this->chat_titles($modelId);
         }
@@ -267,7 +287,7 @@ private function processSend(array $input, ?array $turn = null): array
     return $result;
   }
 
-private function generateReply(int $chatId, array $model, array $input, array $turn, bool $newUserMessage): array
+private function generateReply(int $chatId, array $model, array $input, array $turn, bool $newUserMessage, ?\Closure $onText): array
   {
       $modelId = (int)($_SESSION['model_id'] ?? 0);
       $userMessageId = (int)$turn['user']['id'];
@@ -527,6 +547,7 @@ private function generateReply(int $chatId, array $model, array $input, array $t
         * Provider options.
         */
         $options = $model['parameters'] ?? [];
+        unset($options['stream_reply']);
         /*
         * Available tools.
         */
@@ -565,7 +586,8 @@ private function generateReply(int $chatId, array $model, array $input, array $t
             $response = $provider->chat(
                 $messages,
                 $options,
-                $tools
+                $tools,
+                $onText
             );
 
             // Validate the whole round before replaying it or running any tools.
@@ -734,7 +756,8 @@ private function generateReply(int $chatId, array $model, array $input, array $t
             $response = $provider->chat(
                 $messages,
                 $options,
-                []
+                [],
+                $onText
             );            
             $fallbackContent = trim(
                 (string)$response->content

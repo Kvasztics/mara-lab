@@ -166,7 +166,8 @@ public function capabilities(?string $modelId = null): array
 public function chat(
     array $messages,
     array $options = [],
-    array $tools = []
+    array $tools = [],
+    ?\Closure $onText = null
 ): ProviderResponse
   {
     if ($this->modelId === null)
@@ -187,7 +188,7 @@ public function chat(
     $payload = [
         'model'     => $this->modelId,
         'messages' => $messages,
-        'stream'   => false,
+        'stream'   => $onText !== null,
     ];
 
     if (!empty($tools))
@@ -245,7 +246,8 @@ public function chat(
     $response = $this->request(
         'POST',
         '/api/chat',
-        $payload
+        $payload,
+        stream: $onText === null ? null : new ChatStream(false, $onText)
     );
 
 
@@ -292,7 +294,8 @@ public function chat(
     private function request(
         string $method,
         string $endpoint,
-        ?array $payload = null
+        ?array $payload = null,
+        ?ChatStream $stream = null
     ): array {
         $tracked = $method === 'POST' && $endpoint === '/api/chat';
         $requestId = uniqid('ollama-', true);
@@ -341,6 +344,14 @@ public function chat(
                 );
             }
 
+            if ($stream !== null) {
+                $options[CURLOPT_RETURNTRANSFER] = false;
+                $options[CURLOPT_WRITEFUNCTION] = static function ($handle, string $chunk) use ($stream): int {
+                    $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+                    return $status >= 200 && $status < 300 ? $stream->write($chunk) : strlen($chunk);
+                };
+            }
+
             if (!curl_setopt_array($curl, $options)) {
                 throw new \RuntimeException('A cURL beállítása sikertelen.');
             }
@@ -356,6 +367,12 @@ public function chat(
             }
             if ($status < 200 || $status >= 300) {
                 throw new \RuntimeException("Ollama HTTP hiba: {$status}");
+            }
+
+            if ($stream !== null) {
+                $decoded = $stream->result();
+                $raw = json_encode($decoded, JSON_INVALID_UTF8_SUBSTITUTE);
+                return $decoded;
             }
 
             $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);

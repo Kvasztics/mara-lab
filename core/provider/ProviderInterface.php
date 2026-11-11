@@ -22,7 +22,8 @@ interface ProviderInterface
 public function chat(
     array $messages,
     array $options = [],
-    array $tools = []
+    array $tools = [],
+    ?\Closure $onText = null
 ): ProviderResponse;
 
   /**

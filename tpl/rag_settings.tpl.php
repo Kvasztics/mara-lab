@@ -7,6 +7,9 @@
           class="knowledge-editor-form"
           method="post"
           action="<?php echo $action; ?>">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($importCsrf, ENT_QUOTES, 'UTF-8') ?>">
+          <input type="hidden" name="import_token" id="knowledge-import-token"
+                 value="<?= htmlspecialchars($importToken, ENT_QUOTES, 'UTF-8') ?>">
           <input type="hidden" name="id" value="<?php echo (int)$id; ?>">
             <!-- ==================================================
                  HEADER
@@ -20,12 +23,41 @@
                         <?php echo LANG['KNOW_EDIT']; ?>
                     </p>
                 </div>
-                <button
-                    type="submit"
-                    class="btn btn-primary">
-                    <?php echo LANG['SAVE']; ?>
-                </button>
+                <div>
+                    <button type="button" id="knowledge-import-open" class="btn">
+                        <?= LANG['KNOW_IMPORT_BUTTON'] ?>
+                    </button>
+                    <button
+                        type="submit"
+                        class="btn btn-primary">
+                        <?php echo LANG['SAVE']; ?>
+                    </button>
+                </div>
             </header>
+            <div id="knowledge-import-dialog" class="modal common-modal" role="dialog" aria-modal="true"
+                    aria-labelledby="knowledge-import-heading"
+                    data-endpoint="<?= htmlspecialchars(DIR_HOST.'/main/ragimport', ENT_QUOTES, 'UTF-8') ?>"
+                    data-error="<?= htmlspecialchars(LANG['KNOW_IMPORT_ERROR'], ENT_QUOTES, 'UTF-8') ?>"
+                    data-loading="<?= htmlspecialchars(LANG['KNOW_IMPORT_LOADING'], ENT_QUOTES, 'UTF-8') ?>">
+                <div class="modal-content">
+                    <button type="button" class="close" id="knowledge-import-close" aria-label="<?= LANG['MODAL_CLOSE'] ?>">&times;</button>
+                    <div class="content">
+                        <h2 id="knowledge-import-heading"><?= LANG['KNOW_IMPORT_BUTTON'] ?></h2>
+                        <label for="knowledge-import-url"><?= LANG['KNOW_IMPORT_URL'] ?></label>
+                        <input id="knowledge-import-url" type="url" maxlength="500" autocomplete="url">
+                        <p id="knowledge-import-feedback" role="status"></p>
+                        <div class="modal-actions">
+                        <button type="button" id="knowledge-import-cancel" class="btn"><?= LANG['KNOW_IMPORT_CANCEL'] ?></button>
+                        <button type="button" id="knowledge-import-start" class="btn btn-primary"><?= LANG['KNOW_IMPORT_START'] ?></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p id="knowledge-import-source" <?= $importSource === '' ? 'hidden' : '' ?>>
+                <?= LANG['KNOW_IMPORT_SOURCE'] ?>
+                <span id="knowledge-import-source-url"><?= htmlspecialchars($importSource, ENT_QUOTES, 'UTF-8') ?></span>
+                <span id="knowledge-import-source-time"><?= $importFetchedAt === '' ? '' : htmlspecialchars($importFetchedAt.' UTC', ENT_QUOTES, 'UTF-8') ?></span>
+            </p>
             <!-- ==================================================
                  EDITOR
                  ================================================== -->

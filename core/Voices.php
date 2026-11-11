@@ -104,7 +104,11 @@ public function selectVoices($voiceId, ?string $provider = null): string
     foreach ($voices as $voice) 
       {
         $data['value'] = $voice['id'];
-        $data['title'] = $voice['name'];
+        $data['title'] = htmlspecialchars(
+            $voice['name'].' ('.$voice['provider'].')',
+            ENT_QUOTES | ENT_SUBSTITUTE,
+            'UTF-8'
+        );
         if ($voiceId == $voice['id']) {$data['selected'] = ' selected';} else {$data['selected'] = '';}
         $T = new Template(DIR_TPL.'/option.tpl.php',$data);
         $html.= $T->fetch();

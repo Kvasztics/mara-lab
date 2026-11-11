@@ -92,7 +92,7 @@ async function refreshEmotionalChart() {
     }
 }
 
-// Attachments: upload first, store only the server-generated reference.
+// Attachments: prepare a preview before sending.
 let chatAttachment = null;
 let attachmentUploading = false;
 let chatSending = false;
@@ -113,13 +113,19 @@ function clearAttachment() {
     const preview = document.getElementById('attachment_preview');
     if (preview) { preview.hidden = true; }
     const image = document.getElementById('attachment_thumbnail');
-    if (image) { image.removeAttribute('src'); }
+    if (image) { image.removeAttribute('src'); image.hidden = true; }
+    const documentPreview = document.getElementById('document_preview');
+    if (documentPreview) { documentPreview.hidden = true; }
+    const documentText = document.getElementById('document_text');
+    if (documentText) { documentText.textContent = ''; }
+    const documentInput = document.getElementById('document_file');
+    if (documentInput) { documentInput.value = ''; }
     const input = document.getElementById('attachment_file');
     if (input) { input.value = ''; }
     attachmentFeedback();
 }
 function attachmentBusy() {
-    for (const id of ['chat_add', 'attachment_file', 'attachment_remove', 'chat_send', 'model_list']) {
+    for (const id of ['chat_add', 'attachment_file', 'document_file', 'attachment_remove', 'chat_send', 'model_list']) {
         const element = document.getElementById(id);
         if (element) { element.disabled = attachmentUploading || chatSending; }
     }
@@ -143,14 +149,51 @@ async function uploadChatImage(file) {
             throw new Error(result.error || 'A feltöltés sikertelen.');
         }
         if (version !== attachmentVersion) { return; }
+        clearAttachment();
         chatAttachment = {path: result.path, name: file.name};
-        document.getElementById('attachment_thumbnail').src = result.path;
+        const thumbnail = document.getElementById('attachment_thumbnail');
+        thumbnail.hidden = false;
+        thumbnail.src = result.path;
         document.getElementById('attachment_name').textContent = file.name;
         document.getElementById('attachment_preview').hidden = false;
         attachmentFeedback();
     } catch (error) {
         if (version === attachmentVersion) { attachmentFeedback(error.message); }
     } finally {
+        attachmentUploading = false;
+        attachmentBusy();
+    }
+}
+async function previewChatDocument(file, input) {
+    if (!file || attachmentUploading || chatSending) return;
+
+    const version = ++attachmentVersion;
+    attachmentUploading = true;
+    attachmentBusy();
+    attachmentFeedback(input.dataset.loading);
+    try {
+        const data = new FormData();
+        data.append('document', file);
+        data.append('csrf_token', input.dataset.token);
+        const response = await chatFetch('/chat_ajax/uploaddocument', {method: 'POST', body: data});
+        const result = await response.json();
+        if (!response.ok || !result.success || typeof result.text !== 'string') {
+            throw new Error(result.error || input.dataset.error);
+        }
+        if (version !== attachmentVersion) return;
+
+        clearAttachment();
+        chatAttachment = {name: result.name, text: result.text};
+        document.getElementById('attachment_name').textContent = result.name;
+        document.getElementById('attachment_preview').hidden = false;
+        document.getElementById('document_text').textContent = result.text;
+        const preview = document.getElementById('document_preview');
+        preview.open = true;
+        preview.hidden = false;
+    } catch (error) {
+        if (version === attachmentVersion) attachmentFeedback(error.message || input.dataset.error);
+    } finally {
+        input.value = '';
         attachmentUploading = false;
         attachmentBusy();
     }
@@ -171,6 +214,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('attachment_file')?.addEventListener('change', event => {
         uploadChatImage(event.target.files[0]);
+    });
+    const documentInput = document.getElementById('document_file');
+    document.getElementById('attach_document')?.addEventListener('click', () => {
+        closeAttachmentMenu();
+        documentInput.click();
+    });
+    documentInput?.addEventListener('change', () => {
+        previewChatDocument(documentInput.files[0], documentInput);
     });
     document.getElementById('attachment_remove')?.addEventListener('click', clearAttachment);
 });
@@ -1177,6 +1228,35 @@ function setStatus(message = '')
       }
   }
 
+async function readChatStream(response, onText) {
+    if (!response.headers.get('Content-Type')?.includes('application/x-ndjson')) {
+        return response.json();
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result;
+    try {
+        while (true) {
+            const {value, done} = await reader.read();
+            buffer += decoder.decode(value, {stream: !done});
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                const event = JSON.parse(line);
+                if (typeof event.delta === 'string') onText(event.delta);
+                if (event.result) result = event.result;
+            }
+            if (done) break;
+        }
+    } finally {
+        reader.releaseLock();
+    }
+    if (!result) throw new Error(LANG.CHAT_STREAM_INTERRUPTED);
+    return result;
+}
+
 async function sendMessage()
   {
     if (chatSending || attachmentUploading || modelChanging || chatChanging || newChatStarting) { return; }
@@ -1191,7 +1271,7 @@ async function sendMessage()
 
     const message = input.value.trim();
 
-    if (message === '')
+    if (message === '' && !chatAttachment?.text)
       {
         return;
       }
@@ -1209,10 +1289,11 @@ async function sendMessage()
 
     const pendingText = document.createElement('div');
     pendingText.className = 'message-text';
-    pendingText.textContent = message;
+    pendingText.textContent = message || sentAttachment.name;
 
     pendingUserRow.appendChild(pendingText);
     messages.appendChild(pendingUserRow);
+    let partialReply = null;
 
     /*
      * Clear input immediately.
@@ -1231,7 +1312,15 @@ async function sendMessage()
         const data = new FormData();
 
         data.append('message', message);
-        if (sentAttachment) { data.append('image_path', sentAttachment.path); }
+        if (typeof ReadableStream !== 'undefined' && typeof TextDecoder !== 'undefined') {
+            data.append('stream', '1');
+        }
+        if (sentAttachment?.path) {
+            data.append('image_path', sentAttachment.path);
+        } else if (sentAttachment?.text) {
+            data.append('document_name', sentAttachment.name);
+            data.append('document_text', sentAttachment.text);
+        }
 
         const emotionalBall = document.getElementById('emotional_ball');
         data.append('emotional_ball', emotionalBall?.checked ? '1' : '0');
@@ -1251,7 +1340,20 @@ async function sendMessage()
           }
         );
 
-        const result = await response.json();
+        const result = await readChatStream(response, delta => {
+            if (!partialReply) {
+                partialReply = document.createElement('div');
+                partialReply.className = 'message-row model';
+                const text = document.createElement('div');
+                text.className = 'message-text';
+                text.style.whiteSpace = 'pre-wrap';
+                partialReply.appendChild(text);
+                messages.appendChild(partialReply);
+            }
+            partialReply.firstChild.append(document.createTextNode(delta));
+            messages.scrollTop = messages.scrollHeight;
+        });
+        if (result.success) partialReply?.remove();
 
         if (!result.success)
           {
@@ -1329,6 +1431,11 @@ async function sendMessage()
     catch (error)
       {
         console.error('Send message error:', error);
+        if (partialReply?.isConnected) {
+            const notice = document.createElement('small');
+            notice.textContent = LANG.CHAT_STREAM_PARTIAL;
+            partialReply.appendChild(notice);
+        }
         attachmentFeedback(error.message);
         if (pendingUserRow.isConnected) {
             pendingUserRow.classList.add('message-send-error');

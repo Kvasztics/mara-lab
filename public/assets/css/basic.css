@@ -3953,3 +3953,23 @@ img {
     .model-export-btn { top: 9px; right: 45px; }
     .models-header { flex-wrap: wrap; }
 }
+
+#rag-embedding-progress {
+    width: 100%;
+    height: 0.5rem;
+    margin-top: 0.75rem;
+    accent-color: #1677d2;
+}
+
+.document-preview pre {
+    max-height: 12rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0.5rem 0;
+}
+
+.message-row.user .message-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

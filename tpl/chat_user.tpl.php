@@ -16,7 +16,7 @@
 
         <div class="message-content-column">
 
-            <div class="message-text"><?php echo $message; ?></div>
+            <div class="message-text"><?php echo htmlspecialchars((string)$message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
 
             <div class="message-actions">
                 <button type="button" class="message-action" hidden disabled

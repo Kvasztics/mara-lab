@@ -335,6 +335,18 @@
                     </div>
 
 
+                    <div class="settings-field">
+                        <label for="model-stream"><?= LANG['MODEL_STREAM'] ?></label>
+                        <div class="model-private-control">
+                            <input type="hidden" name="stream_reply" value="0">
+                            <label class="switch">
+                                <input type="checkbox" id="model-stream" name="stream_reply" value="1"
+                                    <?= filter_var($parameters['stream_reply'] ?? true, FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' ?>>
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
                     <!-- PRIVATE / OWN MODEL -->
                     <div class="settings-field model-private-field">
                         <label>

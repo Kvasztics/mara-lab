@@ -1,0 +1,10 @@
+[Unit]
+Description=Mara Lab ReaderLM-v2
+RequiresMountsFor=@READER_MODEL@
+
+[Service]
+Type=exec
+User=@READER_USER@
+ExecStart="@LLAMA_SERVER@" -m "@READER_MODEL@" --alias readerlm-v2 --host 127.0.0.1 --port 8084 -ngl 0 -c 24576
+RuntimeMaxSec=180
+TimeoutStopSec=10

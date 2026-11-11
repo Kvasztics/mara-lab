@@ -2307,3 +2307,132 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('pagehide', () => { generation++; clearTimeout(timer); controller?.abort(); });
     sync();
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('rag-embedding-form');
+    if (!form) return;
+
+    const save = form.querySelector('[type="submit"]');
+    const test = document.getElementById('rag-embedding-test');
+    const progress = document.getElementById('rag-embedding-progress');
+    const feedback = document.getElementById('rag-embedding-feedback');
+    const setBusy = (busy) => {
+        save.disabled = busy;
+        test.disabled = busy;
+        progress.hidden = !busy;
+    };
+
+    test.hidden = false;
+    form.addEventListener('submit', (event) => {
+        if (save.disabled) {
+            event.preventDefault();
+            return;
+        }
+        feedback.textContent = form.dataset.working;
+        setBusy(true);
+    });
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            feedback.textContent = '';
+            setBusy(false);
+        }
+    });
+
+    test.addEventListener('click', async () => {
+        if (!form.reportValidity()) return;
+        const data = new FormData(form);
+        data.set('embedding_test', '1');
+        feedback.textContent = form.dataset.working;
+        setBusy(true);
+        try {
+            const response = await fetch(form.action, {method: 'POST', body: data});
+            const result = await response.json();
+            feedback.textContent = result.message || form.dataset.testError;
+        } catch {
+            feedback.textContent = form.dataset.testError;
+        } finally {
+            setBusy(false);
+        }
+    });
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const dialog = document.getElementById('knowledge-import-dialog');
+    if (!dialog) return;
+
+    const form = dialog.closest('form');
+    const url = document.getElementById('knowledge-import-url');
+    const start = document.getElementById('knowledge-import-start');
+    const cancel = document.getElementById('knowledge-import-cancel');
+    const feedback = document.getElementById('knowledge-import-feedback');
+
+    const opener = document.getElementById('knowledge-import-open');
+    const close = document.getElementById('knowledge-import-close');
+    let opened = false;
+    const closeModal = () => {
+        modalClose(dialog.id);
+        opened = false;
+    };
+    const dismiss = () => {
+        if (start.disabled) return;
+        closeModal();
+        opener.focus();
+    };
+    opener.addEventListener('click', () => {
+        feedback.textContent = '';
+        modalOpen(dialog.id);
+        opened = true;
+        url.focus();
+    });
+    cancel.addEventListener('click', dismiss);
+    close.addEventListener('click', dismiss);
+    document.addEventListener('keydown', event => {
+        if (opened && event.key === 'Escape') dismiss();
+    });
+    form.addEventListener('submit', event => {
+        if (opened) event.preventDefault();
+    });
+    url.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            start.click();
+        }
+    });
+    start.addEventListener('click', async () => {
+        if (!url.value.trim() || !url.reportValidity()) {
+            feedback.textContent = dialog.dataset.error;
+            return;
+        }
+        start.disabled = true;
+        cancel.disabled = true;
+        close.disabled = true;
+        url.disabled = true;
+        feedback.textContent = dialog.dataset.loading;
+        try {
+            const data = new FormData();
+            data.set('url', url.value.trim());
+            data.set('csrf_token', form.elements.csrf_token.value);
+            const response = await fetch(dialog.dataset.endpoint, {method: 'POST', body: data});
+            const preview = await response.json();
+            if (!response.ok || !preview.token) throw new Error(preview.error || dialog.dataset.error);
+
+            const title = document.getElementById('knowledge-title');
+            const content = document.getElementById('knowledge-content');
+            if (!title.value.trim()) title.value = preview.title;
+            content.value = preview.content;
+            document.getElementById('knowledge-import-token').value = preview.token;
+            document.getElementById('knowledge-import-source-url').textContent = preview.source;
+            document.getElementById('knowledge-import-source-time').textContent = preview.fetched_at + ' UTC';
+            document.getElementById('knowledge-import-source').hidden = false;
+            closeModal();
+            content.focus();
+        } catch (error) {
+            feedback.textContent = error.message || dialog.dataset.error;
+        } finally {
+            start.disabled = false;
+            cancel.disabled = false;
+            close.disabled = false;
+            url.disabled = false;
+        }
+    });
+});

@@ -665,6 +665,8 @@ public function rag($var = []): void
         $_SESSION['rag_embedding_csrf'] ??= bin2hex(random_bytes(32));
         $pagedata['embeddingToken'] = $_SESSION['rag_embedding_csrf'];
         $pagedata['embeddingConfig'] = $this->RAG->embeddingConfig();
+        $pagedata['ragTab'] = in_array($_GET['tab'] ?? '', ['embedding', 'reader'], true) ? $_GET['tab'] : 'rag';
+
     }
     $template = DIR_TPL.'/rag.tpl.php';
     $this->show([
@@ -686,12 +688,31 @@ public function ragembeddingsave(): void
         return;
     }
 
+    $provider = is_string($_POST['embedding_provider'] ?? null) ? $_POST['embedding_provider'] : '';
+    $model = is_string($_POST['embedding_model'] ?? null) ? $_POST['embedding_model'] : '';
+    $port = (int)filter_var($_POST['embedding_port'] ?? null, FILTER_VALIDATE_INT);
+    if (($_POST['embedding_test'] ?? '') === '1') {
+        session_write_close();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+        try {
+            $dimensions = $this->RAG->testEmbedding($provider, $model, $port);
+            $message = sprintf(LANG['RAG_EMBEDDING_TEST_OK'], $dimensions);
+        } catch (EmbeddingException $error) {
+            http_response_code(503);
+            $message = $error->getMessage();
+        } catch (\Throwable $error) {
+            error_log('Mara embedding test: '.$error->getMessage());
+            http_response_code(500);
+            $message = LANG['RAG_EMBEDDING_TEST_ERROR'];
+        }
+        echo json_encode(['message' => $message], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     @set_time_limit(240);
     try {
-        $provider = is_string($_POST['embedding_provider'] ?? null) ? $_POST['embedding_provider'] : '';
-        $model = is_string($_POST['embedding_model'] ?? null) ? $_POST['embedding_model'] : '';
-        $port = filter_var($_POST['embedding_port'] ?? null, FILTER_VALIDATE_INT);
-        $count = $this->RAG->configureEmbedding($provider, $model, (int)$port);
+        $count = $this->RAG->configureEmbedding($provider, $model, $port);
         $_SESSION['message'] = sprintf(LANG['RAG_EMBEDDING_SAVED'], $count);
     } catch (EmbeddingException $error) {
         $_SESSION['message'] = sprintf(LANG['RAG_EMBEDDING_SAVE_ERROR'], $error->getMessage());
@@ -700,7 +721,40 @@ public function ragembeddingsave(): void
         $_SESSION['message'] = LANG['RAG_EMBEDDING_REINDEX_ERROR'];
     }
 
-    header('Location: '.DIR_HOST.'/main/rag', true, 303);
+    header('Location: '.DIR_HOST.'/main/rag?tab=embedding', true, 303);
+    exit;
+  }
+
+public function ragreadersave(): void
+  {
+    User::loggedIn();
+    $token = $_POST['csrf_token'] ?? null;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !User::isAdmin() ||
+        !is_string($token) || empty($_SESSION['rag_embedding_csrf']) ||
+        !hash_equals($_SESSION['rag_embedding_csrf'], $token)) {
+        http_response_code(403);
+        return;
+    }
+
+    $prompt = is_string($_POST['system_prompt'] ?? null) ? trim($_POST['system_prompt']) : '';
+    $values = ['system_prompt' => $prompt];
+    $valid = $prompt !== '' && mb_strlen($prompt) <= 8000;
+    foreach (\mara\core\integration\KnowledgeWebImport::LIMITS as $key => [$default, $min, $max]) {
+        $value = filter_var($_POST[$key] ?? null, FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => $min, 'max_range' => $max]]);
+        $valid = $valid && $value !== false;
+        $values[$key] = $value;
+    }
+    try {
+        if ($valid) {
+            $this->SET->saveReaderValues($values);
+        }
+        $_SESSION['message'] = LANG[$valid ? 'MSG_SAVE_OK' : 'RAG_READER_INVALID'];
+    } catch (\Throwable $error) {
+        error_log('Mara Reader settings: '.$error->getMessage());
+        $_SESSION['message'] = LANG['RAG_READER_SAVE_ERROR'];
+    }
+    header('Location: '.DIR_HOST.'/main/rag?tab=reader', true, 303);
     exit;
   }
 
@@ -717,6 +771,11 @@ public function ragnew($var = []): void
     $mdata              = $this->MOD->getSelectModelList();
     $pagedata['models'] = $mdata['models'];
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
+    $_SESSION['rag_import_csrf'] ??= bin2hex(random_bytes(32));
+    $pagedata['importCsrf'] = $_SESSION['rag_import_csrf'];
+    $pagedata['importToken'] = (string)($var['importToken'] ?? '');
+    $pagedata['importSource'] = $_SESSION['rag_imports'][$pagedata['importToken']]['source'] ?? '';
+    $pagedata['importFetchedAt'] = $_SESSION['rag_imports'][$pagedata['importToken']]['fetched_at'] ?? '';
     $pagedata['action'] = DIR_HOST.'/main/ragsave';
 
     $pagedata['id']      = 0;
@@ -733,6 +792,50 @@ public function ragnew($var = []): void
         'pagedata' => $pagedata
     ]);
   }
+public function ragimport(): void
+  {
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $csrf = $_POST['csrf_token'] ?? null;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !is_string($csrf) ||
+        !hash_equals($_SESSION['rag_import_csrf'] ?? '', $csrf) || $csrf === '') {
+        http_response_code(403);
+        echo json_encode(['error' => LANG['KNOW_IMPORT_ERROR']]);
+        return;
+    }
+    $url = is_string($_POST['url'] ?? null) ? trim($_POST['url']) : '';
+    $userId = User::id();
+    session_write_close();
+    @set_time_limit(540);
+
+    try {
+        $preview = (new \mara\core\integration\KnowledgeWebImport())->read($url);
+        session_start();
+        if (User::id() !== $userId || !hash_equals($_SESSION['rag_import_csrf'] ?? '', $csrf)) {
+            http_response_code(403);
+            echo json_encode(['error' => LANG['KNOW_IMPORT_ERROR']]);
+            return;
+        }
+        $token = bin2hex(random_bytes(24));
+        $imports = array_filter($_SESSION['rag_imports'] ?? [], static fn(array $item): bool => $item['expires'] > time());
+        $imports[$token] = [
+            'source' => $preview['source'], 'fetched_at' => $preview['fetched_at'],
+            'expires' => time() + 3600, 'user_id' => $userId,
+        ];
+        $_SESSION['rag_imports'] = array_slice($imports, -5, null, true);
+        session_write_close();
+        echo json_encode($preview + ['token' => $token], JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+    } catch (\RuntimeException $error) {
+        http_response_code(422);
+        echo json_encode(['error' => $error->getMessage()]);
+    } catch (\Throwable $error) {
+        error_log('Mara knowledge import: '.$error->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => LANG['KNOW_IMPORT_ERROR']]);
+    }
+  }
+
 /**
  * Save Rag data
  *
@@ -764,13 +867,32 @@ public function ragsave($var = []): void
         $userId = User::id();
       }
 
+    $csrf = $_POST['csrf_token'] ?? null;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !is_string($csrf) ||
+        $csrf === '' || !hash_equals($_SESSION['rag_import_csrf'] ?? '', $csrf)) {
+        http_response_code(403);
+        return;
+    }
+    $importToken = is_string($_POST['import_token'] ?? null) ? $_POST['import_token'] : '';
+    $import = $_SESSION['rag_imports'][$importToken] ?? null;
+    if ($importToken !== '' && ($import === null || $import['expires'] <= time() ||
+        $import['user_id'] !== User::id())) {
+        http_response_code(422);
+        $_SESSION['message'] = LANG['KNOW_IMPORT_EXPIRED'];
+        $this->ragnew(['title' => $title, 'content' => $content, 'user_id' => $userId, 'importToken' => $importToken]);
+        return;
+    }
+
     try
       {
         $this->RAG->add(
             $title,
             $content,
-            $userId
+            $userId,
+            $import['source'] ?? null,
+            $import['fetched_at'] ?? null
         );
+        unset($_SESSION['rag_imports'][$importToken]);
 
         header(
             'Location: '.DIR_HOST.'/main/rag'
@@ -782,7 +904,7 @@ public function ragsave($var = []): void
       {
         http_response_code(503);
         $_SESSION['message'] = $error->getMessage();
-        $this->ragnew(['title' => $title, 'content' => $content, 'user_id' => $userId]);
+        $this->ragnew(['title' => $title, 'content' => $content, 'user_id' => $userId, 'importToken' => $importToken]);
       }
     catch (\Throwable $e)
       {

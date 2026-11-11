@@ -45,6 +45,7 @@ App::init([
     ],
 
     'system' => $settings->values('system'),    
+    'reader' => $settings->values('reader'),
 
     'provider' => [
         'llamacpp' => $settings->values('llamacpp'),

@@ -528,7 +528,8 @@ private function ggufQuantization(int $fileType, string $filename): string
     public function chat(
         array $messages,
         array $options = [],
-        array $tools = []
+        array $tools = [],
+        ?\Closure $onText = null
     ): ProviderResponse
     {
         if ($this->modelId === null) {
@@ -571,10 +572,15 @@ private function ggufQuantization(int $fileType, string $filename): string
             $payload['reasoning_effort'] = 'none';
         }
 
+        if ($onText !== null) {
+            $payload['stream'] = true;
+            $payload['stream_options'] = ['include_usage' => true];
+        }
         $response = $this->request(
             'POST',
             '/v1/chat/completions',
-            $payload
+            $payload,
+            stream: $onText === null ? null : new ChatStream(true, $onText)
         );
 
         $message = $response['choices'][0]['message'] ?? [];
@@ -634,7 +640,8 @@ private function ggufQuantization(int $fileType, string $filename): string
         string $method,
         string $endpoint,
         ?array $payload = null,
-        ?int $timeout = null
+        ?int $timeout = null,
+        ?ChatStream $stream = null
     ): array {
         $tracked = $method === 'POST' && $endpoint === '/v1/chat/completions';
         $requestId = uniqid('llamacpp-', true);
@@ -683,6 +690,14 @@ private function ggufQuantization(int $fileType, string $filename): string
                 );
             }
 
+            if ($stream !== null) {
+                $options[CURLOPT_RETURNTRANSFER] = false;
+                $options[CURLOPT_WRITEFUNCTION] = static function ($handle, string $chunk) use ($stream): int {
+                    $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+                    return $status >= 200 && $status < 300 ? $stream->write($chunk) : strlen($chunk);
+                };
+            }
+
             if (!curl_setopt_array($curl, $options)) {
                 throw new \RuntimeException('A cURL beállítása sikertelen.');
             }
@@ -698,6 +713,12 @@ private function ggufQuantization(int $fileType, string $filename): string
             }
             if ($status < 200 || $status >= 300) {
                 throw new \RuntimeException("Provider HTTP hiba: {$status}");
+            }
+
+            if ($stream !== null) {
+                $decoded = $stream->result();
+                $raw = json_encode($decoded, JSON_INVALID_UTF8_SUBSTITUTE);
+                return $decoded;
             }
 
             $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);

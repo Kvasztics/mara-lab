@@ -2,7 +2,9 @@
 namespace mara\core\ajax;
 
 use mara\core\User;
+use mara\core\App;
 use mara\core\Chat;
+use mara\core\ChatDocument;
 
 class chat_ajax
 {
@@ -130,14 +132,40 @@ public function sendmessage(): void
   {
     User::loggedIn();
 
-    header('Content-Type: application/json; charset=utf-8');
+    $stream = ($_POST['stream'] ?? '') === '1' && filter_var(
+        App::get('model.parameters.stream_reply', true),
+        FILTER_VALIDATE_BOOLEAN
+    );
+    $emit = null;
+    if ($stream) {
+        @ini_set('zlib.output_compression', '0');
+        while (ob_get_level() > 0 && @ob_end_clean()) {
+        }
+        header('Content-Type: application/x-ndjson; charset=utf-8');
+        header('X-Accel-Buffering: no');
+        header('Cache-Control: no-store');
+        ignore_user_abort(true);
+        $emit = static function (array $event): void {
+            echo json_encode($event, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR)."\n";
+            flush();
+        };
+    } else {
+        header('Content-Type: application/json; charset=utf-8');
+    }
 
     try {
-        $result = $this->CHAT->send($_POST);
+        $result = $this->CHAT->send($_POST, $emit === null ? null :
+            static fn(string $text) => $emit(['delta' => $text]));
     } catch (\Throwable $error) {
         error_log('Mara chat: '.$error->getMessage());
-        http_response_code(500);
-        $result = ['success' => false, 'error' => 'Az üzenet feldolgozása sikertelen. Ellenőrizd a szerver naplóját.'];
+        if (!$stream) http_response_code(500);
+        $result = ['success' => false, 'error' => $stream ? LANG['CHAT_STREAM_INTERRUPTED'] :
+            'Az üzenet feldolgozása sikertelen. Ellenőrizd a szerver naplóját.'];
+    }
+
+    if ($emit !== null) {
+        $emit(['result' => $result]);
+        return;
     }
 
     echo json_encode(
@@ -145,6 +173,33 @@ public function sendmessage(): void
         JSON_UNESCAPED_UNICODE
     );
   }
+public function uploaddocument(): void
+{
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $token = $_POST['csrf_token'] ?? null;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !is_string($token) ||
+        empty($_SESSION['chat_turn_csrf']) || !hash_equals($_SESSION['chat_turn_csrf'], $token)) {
+        http_response_code(403);
+        echo json_encode(['error' => LANG['CHAT_DOCUMENT_UPLOAD_ERROR']]);
+        return;
+    }
+
+    session_write_close();
+    try {
+        $preview = ChatDocument::preview($_FILES['document'] ?? []);
+        echo json_encode(['success' => true] + $preview, JSON_THROW_ON_ERROR);
+    } catch (\RuntimeException $error) {
+        http_response_code(422);
+        echo json_encode(['error' => $error->getMessage()]);
+    } catch (\Throwable $error) {
+        error_log('Mara document preview: '.$error->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => LANG['CHAT_DOCUMENT_UPLOAD_ERROR']]);
+    }
+}
+
 /** Upload image separately so Send never races the upload. */
 public function uploadimage(): void
 {

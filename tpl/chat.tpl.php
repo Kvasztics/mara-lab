@@ -155,6 +155,10 @@
                 <span id="attachment_name"></span>
                 <button type="button" id="attachment_remove" aria-label="Csatolmány eltávolítása">×</button>
             </div>
+            <details id="document_preview" class="document-preview" hidden open>
+                <summary><?= LANG['CHAT_DOCUMENT_PREVIEW'] ?></summary>
+                <pre id="document_text"></pre>
+            </details>
             <div id="attachment_feedback" class="attachment-feedback" role="status" aria-live="polite"></div>
 
 
@@ -170,9 +174,14 @@
                     </button>
                     <div id="attachment_menu" class="attachment-menu" hidden>
                         <button type="button" id="attach_image">Kép csatolása</button>
+                        <button type="button" id="attach_document"><?= LANG['CHAT_DOCUMENT_ATTACH'] ?></button>
                         <button type="button" disabled title="Fejlesztés alatt">Videó hozzáadása — hamarosan</button>
                     </div>
                     <input type="file" id="attachment_file" accept="image/jpeg,image/png,image/webp" hidden>
+                    <input type="file" id="document_file" accept="<?= \mara\core\ChatDocument::accept() ?>"
+                           data-token="<?= htmlspecialchars((string)($_SESSION['chat_turn_csrf'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                           data-loading="<?= LANG['CHAT_DOCUMENT_LOADING'] ?>"
+                           data-error="<?= LANG['CHAT_DOCUMENT_UPLOAD_ERROR'] ?>" hidden>
                 </div>
 
 

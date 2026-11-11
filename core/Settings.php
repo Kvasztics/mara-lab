@@ -80,6 +80,34 @@ final class Settings
         $stmt->bind_param('sss', $value, $group, $key);
         return $stmt->execute();
       }
+    public function saveReaderValues(array $values): void
+    {
+        $this->DB->begin_transaction();
+        try {
+            $rows = $this->DB->query("SELECT datakey FROM settings WHERE type = 'reader' FOR UPDATE");
+            $existing = array_column($rows->fetch_all(MYSQLI_ASSOC), 'datakey');
+            foreach ($values as $key => $value) {
+                if (in_array($key, $existing, true)) {
+                    if (!$this->setValue('reader', $key, (string)$value)) {
+                        throw new \RuntimeException('Could not update Reader setting.');
+                    }
+                } else {
+                    $stmt = $this->DB->prepare("INSERT INTO settings (type, datakey, datavalue) VALUES ('reader', ?, ?)");
+                    $value = (string)$value;
+                    $stmt->bind_param('ss', $key, $value);
+                    if (!$stmt->execute()) {
+                        throw new \RuntimeException('Could not insert Reader setting.');
+                    }
+                    $stmt->close();
+                }
+            }
+            $this->DB->commit();
+        } catch (\Throwable $error) {
+            $this->DB->rollback();
+            throw $error;
+        }
+    }
+
 /**
  * Render languages to select
  * @access public

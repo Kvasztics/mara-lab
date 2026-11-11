@@ -407,6 +407,10 @@ public function save(array $input, ?string $cardData = null): int|false
     $previousParameters = !$isNew
       ? $this->decodeArray($model['parameters'] ?? [])
       : [];
+    $parameters['stream_reply'] = filter_var(
+        $input['stream_reply'] ?? $previousParameters['stream_reply'] ?? true,
+        FILTER_VALIDATE_BOOLEAN
+    );
 
     foreach (['dynatemp_range', 'dynatemp_exponent'] as $key) {
       $value = $previousParameters[$key] ?? null;

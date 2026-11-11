@@ -39,7 +39,7 @@ public function embeddingConfig(): array
     ];
   }
 
-public function configureEmbedding(string $provider, string $model, int $port): int
+private function validatedEmbeddingConfig(string $provider, string $model, int $port): array
   {
     $provider = trim($provider);
     $model = trim($model);
@@ -48,13 +48,24 @@ public function configureEmbedding(string $provider, string $model, int $port): 
         throw new EmbeddingException(LANG['RAG_EMBEDDING_CONFIG_ERROR']);
     }
 
-    return $this->db->withEmbeddingIndex(function () use ($provider, $model, $port): int {
+    return ['provider' => $provider, 'model' => $model, 'port' => $port];
+  }
+
+public function testEmbedding(string $provider, string $model, int $port): int
+  {
+    $embedding = new Embedding($this->validatedEmbeddingConfig($provider, $model, $port));
+    return count($embedding->embed('Mara RAG'));
+  }
+
+public function configureEmbedding(string $provider, string $model, int $port): int
+  {
+    $config = $this->validatedEmbeddingConfig($provider, $model, $port);
+
+    return $this->db->withEmbeddingIndex(function () use ($config): int {
         $previous = $this->embeddingConfig();
-        $config = [
-            'provider' => $provider,
-            'model' => $model,
-            'port' => $provider === 'llamacpp' ? $port : $previous['port'],
-        ];
+        if ($config['provider'] === 'ollama') {
+            $config['port'] = $previous['port'];
+        }
         if ($config === $previous) {
             return 0;
         }
@@ -139,7 +150,8 @@ public function add(
     string $title,
     string $content,
     int $userId,
-    ?string $source = null
+    ?string $source = null,
+    ?string $sourceFetchedAt = null
 ): int
   {
     $title   = trim($title);
@@ -164,7 +176,7 @@ public function add(
         );
       }
 
-    return $this->db->withEmbeddingIndex(function () use ($userId, $title, $source, $chunks): int {
+    return $this->db->withEmbeddingIndex(function () use ($userId, $title, $source, $sourceFetchedAt, $chunks): int {
       $embeddingService = new Embedding($this->embeddingConfig());
       $this->db->begin();
 
@@ -173,7 +185,8 @@ public function add(
         $documentId = $this->db->createDocument(
             $userId,
             $title,
-            $source
+            $source,
+            $sourceFetchedAt
         );
 
         foreach ($chunks as $chunkIndex => $chunkContent)

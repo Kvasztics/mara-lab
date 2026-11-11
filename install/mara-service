@@ -18,6 +18,7 @@ case "$SERVICE" in
     whisper-medium|whisper-medium.service) UNIT=whisper-medium.service ;;
     wan-api|wan-api.service) UNIT=wan-api.service ;;
     searxng|searxng.service) UNIT=searxng.service ;;
+    mara-reader|mara-reader.service) UNIT=mara-reader.service ;;
     *)
         echo 'Unsupported service.' >&2
         exit 2

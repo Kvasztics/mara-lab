@@ -84,20 +84,22 @@ class mRag
     public function createDocument(
         int $userId,
         string $title,
-        ?string $source = null
+        ?string $source = null,
+        ?string $sourceFetchedAt = null
     ): int
       {
         $stmt = $this->db->prepare(
             "INSERT INTO rag_documents
-                (user_id, title, source)
-             VALUES (?, ?, ?)"
+                (user_id, title, source, source_fetched_at)
+             VALUES (?, ?, ?, ?)"
         );
 
         $stmt->bind_param(
-            "iss",
+            "isss",
             $userId,
             $title,
-            $source
+            $source,
+            $sourceFetchedAt
         );
 
         $stmt->execute();
@@ -167,6 +169,7 @@ public function getDocuments(?int $userId = null): array
             d.user_id,
             d.title,
             d.source,
+            d.source_fetched_at,
             d.created_at,
             (
                 SELECT c.content
