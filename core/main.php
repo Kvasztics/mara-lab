@@ -204,6 +204,18 @@ public function view($var = []): void
     $pagedata['models'] = $mdata['models'];
     $pagedata['image']  = $mdata['image'];
     $pagedata['active_chat_id'] = (int)($_SESSION['chat_id'] ?? 0);
+    try {
+        $review = (new \mara\database\ChatMemory())->reviews(User::id(), (int)$_SESSION['model_id']);
+        if ($review !== []) {
+            $_SESSION['memory_review_csrf'] ??= bin2hex(random_bytes(32));
+            $pagedata['memoryReview'] = $review;
+            $pagedata['memoryReviewToken'] = $_SESSION['memory_review_csrf'];
+        }
+    } catch (\Throwable $error) {
+        error_log('Mara memory review: ' . $error->getMessage());
+    }
+    $pagedata['memoryReviewError'] = $_SESSION['memory_review_error'] ?? false;
+    unset($_SESSION['memory_review_error']);
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $this->show([
         'header'   => DIR_TPL.'/header.tpl.php',
@@ -213,6 +225,59 @@ public function view($var = []): void
         'pagedata' => $pagedata
     ]);
   }
+public function memoryreview($var = []): void
+  {
+    User::loggedIn();
+    $token = $_POST['csrf_token'] ?? null;
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !is_string($token) ||
+        $token === '' || !hash_equals($_SESSION['memory_review_csrf'] ?? '', $token)) {
+        http_response_code(403);
+        exit(LANG['MEMORY_REVIEW_ERROR']);
+    }
+
+    try {
+        $userId = User::id();
+        $modelId = (int)($_SESSION['model_id'] ?? 0);
+        $messageId = filter_var($_POST['message_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($messageId === false || $modelId < 1) {
+            throw new \RuntimeException('Invalid memory proposal ID.');
+        }
+        $memory = new \mara\database\ChatMemory();
+        $decision = $_POST['decision'] ?? null;
+        if ($decision === 'dismiss') {
+            $memory->dismiss($messageId, $userId, $modelId);
+        } elseif ($decision === 'approve') {
+            $review = $memory->reviews($userId, $modelId, $messageId);
+            $content = $_POST['content'] ?? null;
+            $mode = $_POST['mode'] ?? null;
+            if ($review === [] || !is_string($content) || trim($content) === '' ||
+                mb_strlen(trim($content)) > 500 || !in_array($mode, ['add', 'supersede'], true)) {
+                throw new \RuntimeException('Invalid memory proposal.');
+            }
+            $proposal = json_decode($review['proposal'], true, 512, JSON_THROW_ON_ERROR);
+            $replaces = null;
+            if ($mode === 'supersede') {
+                if (($proposal['action'] ?? '') !== 'supersede' || $review['previous'] === null ||
+                    !is_int($proposal['memory_id'] ?? null)) {
+                    throw new \RuntimeException('Replacement memory is no longer available.');
+                }
+                $replaces = $proposal['memory_id'];
+            }
+            $content = trim($content);
+            [$key, $vector] = (new MemoryRetrieval($memory, $this->RAG))->vector($content);
+            $memory->save($messageId, $content, $replaces, 'context', $key, $vector, [$userId, $modelId]);
+        } else {
+            throw new \RuntimeException('Invalid review action.');
+        }
+    } catch (\Throwable $error) {
+        error_log('Mara memory review: ' . $error->getMessage());
+        $_SESSION['memory_review_error'] = true;
+    }
+
+    header('Location: ' . DIR_HOST . '/main/view?memory_review=1', true, 303);
+    exit;
+  }
+
 /**
  * Render models page
  * @param array $var
@@ -384,7 +449,20 @@ public function settings($var = []): void
         $providers[$provider] = $this->SET->values($provider);
       }
     $pagedata['providerdata'] = $providers;
-    $pagedata['logSources'] = User::isAdmin() ? LogViewer::sources() : [];  
+    $pagedata['logSources'] = User::isAdmin() ? LogViewer::sources() : [];
+    if (User::isAdmin()) {
+        $_SESSION['memory_settings_csrf'] ??= bin2hex(random_bytes(32));
+        $pagedata['memoryToken'] = $_SESSION['memory_settings_csrf'];
+        try {
+            $pagedata['memoryModels'] = (new \mara\core\provider\ProviderManager())->getLlamaCppModelOptions();
+        } catch (\RuntimeException) {
+            $pagedata['memoryModels'] = [];
+        }
+        $pagedata['memoryModel'] = (string) App::get('system.memory_model', '');
+        $pagedata['memoryPort'] = (int) App::get('system.memory_port', 8085);
+        $pagedata['memoryPrompt'] = trim((string) App::get('system.memory_prompt', ''))
+            ?: MemorySettings::defaultPrompt();
+    }
     
     $pagedata['voiceproviders'] = array_filter(
         array_map(
@@ -481,6 +559,44 @@ public function logread($var = []): void
 public function settingssave($var = []): void
   {
     User::loggedIn();
+    if (isset($_POST['memory_settings'])) {
+        $token = $_POST['memory_csrf'] ?? null;
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !User::isAdmin() ||
+            !is_string($token) || $token === '' ||
+            !hash_equals($_SESSION['memory_settings_csrf'] ?? '', $token)) {
+            http_response_code(403);
+            exit(LANG['MEMORY_SETTINGS_FORBIDDEN']);
+        }
+
+        $memory = $_POST['memory_settings'];
+        if (!is_array($memory)) {
+            http_response_code(400);
+            exit(LANG['MEMORY_SETTINGS_INVALID']);
+        }
+        $model = $memory['model'] ?? null;
+        $prompt = $memory['prompt'] ?? null;
+        $port = filter_var($memory['port'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]);
+        $currentModel = (string) App::get('system.memory_model', '');
+        if (!is_string($model) || !is_string($prompt) || strlen($prompt) > 60000 || $port === false ||
+            ($model !== '' && $model !== $currentModel &&
+             !in_array($model, (new \mara\core\provider\ProviderManager())->getLlamaCppModelOptions(), true))) {
+            http_response_code(400);
+            exit(LANG['MEMORY_SETTINGS_INVALID']);
+        }
+        try {
+            $this->SET->saveSystemMemoryValues([
+                'memory_model' => $model,
+                'memory_port' => (string) $port,
+                'memory_prompt' => trim($prompt),
+            ]);
+        } catch (\Throwable $error) {
+            error_log('Mara memory settings: ' . $error->getMessage());
+            http_response_code(500);
+            exit(LANG['MEMORY_SETTINGS_SAVE_ERROR']);
+        }
+    }
 //----- System settings --------------------------------------------------
     $language = trim($_POST['language'] ?? '');
     $provider = trim($_POST['model_provider'] ?? '');

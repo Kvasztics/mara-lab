@@ -19,6 +19,8 @@ case "$SERVICE" in
     wan-api|wan-api.service) UNIT=wan-api.service ;;
     searxng|searxng.service) UNIT=searxng.service ;;
     mara-reader|mara-reader.service) UNIT=mara-reader.service ;;
+    mara-embedding|mara-embedding.service) UNIT=mara-embedding.service ;;
+    mara-memory|mara-memory.service) UNIT=mara-memory.service ;;    
     *)
         echo 'Unsupported service.' >&2
         exit 2

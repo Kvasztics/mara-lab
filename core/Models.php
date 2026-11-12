@@ -412,6 +412,11 @@ public function save(array $input, ?string $cardData = null): int|false
         FILTER_VALIDATE_BOOLEAN
     );
 
+    $parameters['memory_enabled'] = filter_var(
+        $input['memory_enabled'] ?? $previousParameters['memory_enabled'] ?? false,
+        FILTER_VALIDATE_BOOLEAN
+    );
+
     foreach (['dynatemp_range', 'dynatemp_exponent'] as $key) {
       $value = $previousParameters[$key] ?? null;
       if (trim((string)($input['provider'] ?? '')) === 'llamacpp' && array_key_exists($key, $input)) {

@@ -134,6 +134,9 @@
          ================================================================== -->
 
     <section class="chat-main">
+        <?php if (!empty($memoryReview) || !empty($memoryReviewError)): ?>
+            <?php require DIR_TPL . '/memory_review.tpl.php'; ?>
+        <?php endif; ?>
 
 
         <!-- --------------------------------------------------------------

@@ -46,12 +46,43 @@ const voiceData = <?= json_encode(
               data-tab="stt">
               <?php echo LANG['SPEECH_RECOGNITION']; ?>
             </button>
+            <?php if (isset($memoryToken)): ?>
+            <button type="button" class="settings-tab" data-tab="memory"><?= LANG['MEMORY_TAB'] ?></button>
+            <?php endif; ?>
             <?php if (!empty($logSources)): ?>
             <button type="button" class="settings-tab" data-tab="logs">Naplók</button>
             <?php endif; ?>
           </nav>
 
           <div class="settings-content">
+          <?php if (isset($memoryToken)): ?>
+          <section class="settings-panel" id="settings-memory" hidden>
+            <input type="hidden" name="memory_csrf" value="<?= htmlspecialchars($memoryToken) ?>">
+            <div class="settings-section">
+              <div class="settings-field">
+                <label for="memory-model"><?= LANG['MEMORY_MODEL'] ?></label>
+                <select id="memory-model" name="memory_settings[model]">
+                  <option value=""><?= LANG['MEMORY_MODEL_EMPTY'] ?></option>
+                  <?php if ($memoryModel !== '' && !in_array($memoryModel, $memoryModels, true)): ?>
+                  <option value="<?= htmlspecialchars($memoryModel) ?>" selected><?= htmlspecialchars($memoryModel) ?></option>
+                  <?php endif; ?>
+                  <?php foreach ($memoryModels as $filename): ?>
+                  <option value="<?= htmlspecialchars($filename) ?>" <?= $filename === $memoryModel ? 'selected' : '' ?>><?= htmlspecialchars($filename) ?></option>
+                  <?php endforeach; ?>
+                </select>
+                <small><?= LANG['MEMORY_MODEL_HELP'] ?></small>
+              </div>
+              <div class="settings-field">
+                <label for="memory-port"><?= LANG['MEMORY_PORT'] ?></label>
+                <input type="number" id="memory-port" name="memory_settings[port]" min="1" max="65535" value="<?= $memoryPort ?>">
+              </div>
+              <div class="settings-field">
+                <label for="memory-prompt"><?= LANG['MEMORY_PROMPT'] ?></label>
+                <textarea id="memory-prompt" name="memory_settings[prompt]" rows="16"><?= htmlspecialchars($memoryPrompt) ?></textarea>
+              </div>
+            </div>
+          </section>
+          <?php endif; ?>
 <!-- ==========================================================
       RENDSZER
       ========================================================== -->

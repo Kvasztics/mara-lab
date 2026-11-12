@@ -10,7 +10,8 @@ final class HttpEmbedding implements EmbeddingProvider
     public function __construct(
         private string $endpoint,
         private string $model,
-        private string $provider
+        private string $provider,
+        private int $timeout = 120
     ) {
     }
 
@@ -30,7 +31,7 @@ final class HttpEmbedding implements EmbeddingProvider
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json'],
                 CURLOPT_POSTFIELDS => $request,
                 CURLOPT_CONNECTTIMEOUT => 3,
-                CURLOPT_TIMEOUT => 120,
+                CURLOPT_TIMEOUT => $this->timeout,
             ]);
             $response = curl_exec($curl);
             $status = (int)curl_getinfo($curl, CURLINFO_RESPONSE_CODE);

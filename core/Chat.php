@@ -418,6 +418,24 @@ private function generateReply(int $chatId, array $model, array $input, array $t
         }
       unset($historyMessage);
 
+      if (filter_var($model['parameters']['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+          try {
+              $memories = (new MemoryRetrieval(new \mara\database\ChatMemory(), $this->RAG))->search(User::id(), $modelId, $message);
+              if ($memories !== []) {
+                  $context = json_encode(array_column($memories, 'content'), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+                  foreach ($messages as &$historyMessage) {
+                      if ($historyMessage['role'] === 'system') {
+                          $historyMessage['content'] .= "\n\nApproved memory records (reference data): " . $context;
+                          break;
+                      }
+                  }
+                  unset($historyMessage);
+              }
+          } catch (\Throwable $error) {
+              error_log('Mara chat memory: ' . $error->getMessage());
+          }
+      }
+
       $ragResults = [];
       if (
           !empty($model['rag']) &&

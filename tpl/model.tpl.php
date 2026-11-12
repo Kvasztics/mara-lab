@@ -347,6 +347,18 @@
                         </div>
                     </div>
 
+                    <div class="settings-field">
+                        <label for="model-memory"><?= LANG['MODEL_MEMORY_ENABLED'] ?></label>
+                        <div class="model-private-control">
+                            <input type="hidden" name="memory_enabled" value="0">
+                            <label class="switch">
+                                <input type="checkbox" id="model-memory" name="memory_enabled" value="1"
+                                    <?= filter_var($parameters['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' ?>>
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
                     <!-- PRIVATE / OWN MODEL -->
                     <div class="settings-field model-private-field">
                         <label>

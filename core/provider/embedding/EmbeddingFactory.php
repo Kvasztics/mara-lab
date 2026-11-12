@@ -18,12 +18,14 @@ final class EmbeddingFactory
             'ollama' => new HttpEmbedding(
                 rtrim((string)App::get('provider.ollama.url', 'http://127.0.0.1:11434'), '/') . '/api/embed',
                 $config['model'],
-                'ollama'
+                'ollama',
+                (int)($config['timeout'] ?? 120)
             ),
             'llamacpp' => new HttpEmbedding(
                 'http://127.0.0.1:' . $config['port'] . '/v1/embeddings',
                 $config['model'],
-                'llamacpp'
+                'llamacpp',
+                (int)($config['timeout'] ?? 120)
             ),
             default => throw new EmbeddingException(LANG['RAG_EMBEDDING_CONFIG_ERROR']),
         };

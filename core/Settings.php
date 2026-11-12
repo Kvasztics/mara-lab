@@ -82,21 +82,31 @@ final class Settings
       }
     public function saveReaderValues(array $values): void
     {
+        $this->saveGroupValues('reader', $values);
+    }
+
+    public function saveSystemMemoryValues(array $values): void
+    {
+        $this->saveGroupValues('system', $values);
+    }
+
+    private function saveGroupValues(string $group, array $values): void
+    {
         $this->DB->begin_transaction();
         try {
-            $rows = $this->DB->query("SELECT datakey FROM settings WHERE type = 'reader' FOR UPDATE");
+            $rows = $this->DB->execute_query('SELECT datakey FROM settings WHERE type = ? FOR UPDATE', [$group]);
             $existing = array_column($rows->fetch_all(MYSQLI_ASSOC), 'datakey');
             foreach ($values as $key => $value) {
                 if (in_array($key, $existing, true)) {
-                    if (!$this->setValue('reader', $key, (string)$value)) {
-                        throw new \RuntimeException('Could not update Reader setting.');
+                    if (!$this->setValue($group, $key, (string)$value)) {
+                        throw new \RuntimeException('Could not update setting.');
                     }
                 } else {
-                    $stmt = $this->DB->prepare("INSERT INTO settings (type, datakey, datavalue) VALUES ('reader', ?, ?)");
+                    $stmt = $this->DB->prepare("INSERT INTO settings (type, datakey, datavalue) VALUES (?, ?, ?)");
                     $value = (string)$value;
-                    $stmt->bind_param('ss', $key, $value);
+                    $stmt->bind_param('sss', $group, $key, $value);
                     if (!$stmt->execute()) {
-                        throw new \RuntimeException('Could not insert Reader setting.');
+                        throw new \RuntimeException('Could not insert setting.');
                     }
                     $stmt->close();
                 }

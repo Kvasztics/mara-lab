@@ -149,11 +149,11 @@ final class ProviderManager
  *
  * @return array
  */
-  private function getLlamaCppModelOptions(): array
+  public function getLlamaCppModelOptions(): array
     {
       $files = glob($this->getLlamaCppModelDirectory().'/*.gguf') ?: [];
       $files = array_filter($files, static fn(string $path): bool =>
-          stripos(basename($path), 'mmproj') === false
+          is_file($path) && stripos(basename($path), 'mmproj') === false
       );
       natcasesort($files);
 
@@ -177,7 +177,7 @@ final class ProviderManager
       return array_values($options);
     }
 
-  private function getLlamaCppModelDirectory(): string
+  public function getLlamaCppModelDirectory(): string
     {
       $modelDir = trim((string)App::get(
           'llamacpp.model_dir',
