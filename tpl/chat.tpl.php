@@ -134,9 +134,8 @@
          ================================================================== -->
 
     <section class="chat-main">
-        <?php if (!empty($memoryReview) || !empty($memoryReviewError)): ?>
-            <?php require DIR_TPL . '/memory_review.tpl.php'; ?>
-        <?php endif; ?>
+        <div id="memory-review-container"></div>
+        <script defer src="<?= DIR_JS ?>/memory-review.js"></script>
 
 
         <!-- --------------------------------------------------------------
@@ -215,6 +214,18 @@
 
                 <button type="button" class="composer-action" aria-label="Beszédfelismerés" id="btn_mic">
                     <?= $this->icon('microphone') ?>
+                </button>
+                <button type="button" class="composer-action" id="btn_memory_review" hidden disabled
+                        style="display:none"
+                        aria-label="<?= htmlspecialchars(LANG['MEMORY_REVIEW_TITLE']) ?>"
+                        title="<?= htmlspecialchars(LANG['MEMORY_REVIEW_TITLE']) ?>"
+                        data-status-url="<?= htmlspecialchars(DIR_HOST . '/main/memoryreviewstatus') ?>"
+                        data-error="<?= htmlspecialchars(LANG['MEMORY_REVIEW_ERROR']) ?>">
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 32 24" fill="none">
+                        <rect x="2" y="5" width="28" height="14" rx="2" fill="white" stroke="black" stroke-width="1.5"/>
+                        <path d="M6 2v3m5-3v3m5-3v3m5-3v3m5-3v3M6 19v3m5-3v3m5-3v3m5-3v3m5-3v3" stroke="black" stroke-width="1.5"/>
+                        <text x="16" y="15.5" text-anchor="middle" fill="black" font-family="sans-serif" font-size="9" font-weight="700">RAM</text>
+                    </svg>
                 </button>
 
 

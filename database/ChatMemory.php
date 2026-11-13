@@ -21,15 +21,16 @@ final class ChatMemory
         )) = 'true'";
     }
 
-    public function active(int $userId, int $modelId): array
+    public function active(int $userId, int $modelId, int $chatId): array
     {
         return $this->db->execute_query(
-            'SELECT m.id, m.content
+            "SELECT m.id, m.content, m.kind
              FROM chat_memory m
              WHERE m.user_id = ? AND m.model_id = ?
                AND m.superseded_at IS NULL
-             ORDER BY m.id DESC LIMIT 8',
-            [$userId, $modelId]
+             AND (m.kind <> 'project' OR EXISTS (SELECT 1 FROM chat_messages src WHERE src.id = m.source_message_id AND src.session_id = ?))
+             ORDER BY m.id DESC LIMIT 8",
+            [$userId, $modelId, $chatId]
         )->fetch_all(MYSQLI_ASSOC);
     }
 
@@ -43,13 +44,19 @@ final class ChatMemory
         )->fetch_all(MYSQLI_ASSOC);
     }
 
-    public function indexed(int $userId, int $modelId, string $key): array
+    public function indexed(int $userId, int $modelId, string $key, int $chatId, bool $sparse = false): array
     {
+        $vector = $sparse ? 'splade_vector' : 'embedding';
+        $condition = $sparse ? 'splade_vector IS NOT NULL' : 'embedding_key = ?';
+        $params = $sparse ? [$userId, $modelId, $chatId] : [$userId, $modelId, $key, $chatId];
         return $this->db->execute_query(
-            "SELECT id, content, embedding FROM chat_memory
+            "SELECT id, content, {$vector} AS embedding FROM chat_memory
              WHERE user_id = ? AND model_id = ? AND superseded_at IS NULL
-               AND kind = 'context' AND embedding_key = ?",
-            [$userId, $modelId, $key]
+               AND {$condition}
+               AND (kind = 'context' OR (kind = 'project' AND EXISTS (
+                   SELECT 1 FROM chat_messages src WHERE src.id = chat_memory.source_message_id AND src.session_id = ?
+               )))",
+             $params
         )->fetch_all(MYSQLI_ASSOC);
     }
 
@@ -57,7 +64,7 @@ final class ChatMemory
     {
         $result = $this->db->execute_query(
             "SELECT id, content FROM chat_memory
-             WHERE superseded_at IS NULL AND kind = 'context'
+             WHERE superseded_at IS NULL AND kind IN ('context', 'project')
                AND (embedding_key IS NULL OR embedding_key <> ?)
              ORDER BY id",
             [$key]
@@ -78,7 +85,7 @@ final class ChatMemory
 
     public function source(int $messageId, bool $lock = false): array
     {
-        $sql = "SELECT s.user_id, s.model_id, m.content
+        $sql = "SELECT s.user_id, s.model_id, m.session_id, m.content
                 FROM chat_messages m JOIN chat_sessions s ON s.id = m.session_id
                 WHERE m.id = ? AND m.role = 'user'";
         $row = $this->db->execute_query($sql . ($lock ? ' FOR UPDATE' : ''), [$messageId])->fetch_assoc();
@@ -123,7 +130,7 @@ final class ChatMemory
         }
     }
 
-    public function save(int $messageId, string $content, ?int $replaces, string $kind, ?string $key, ?string $vector, ?array $reviewScope = null): void
+    public function save(int $messageId, string $content, ?int $replaces, string $kind, ?string $key, ?string $vector, ?array $reviewScope = null, ?string $automaticProposal = null): void
     {
         $this->db->begin_transaction();
         try {
@@ -140,13 +147,24 @@ final class ChatMemory
                     throw new \RuntimeException('Memory proposal is no longer available.');
                 }
             }
+            if ($automaticProposal !== null) {
+                $this->db->execute_query(
+                    "UPDATE chat_memory_jobs SET status = 'approved', proposal = ?, last_error = NULL
+                     WHERE message_id = ? AND status = 'pending'",
+                    [$automaticProposal, $messageId]
+                );
+                if ($this->db->affected_rows !== 1) {
+                    throw new \RuntimeException('Memory job is no longer pending.');
+                }
+            }
             if ($replaces !== null) {
                 $previous = $this->db->execute_query(
-                    'SELECT id FROM chat_memory
+                    "SELECT id FROM chat_memory
                      WHERE id = ? AND user_id = ? AND model_id = ? AND source_message_id < ?
                        AND superseded_at IS NULL
-                     FOR UPDATE',
-                    [$replaces, $source['user_id'], $source['model_id'], $messageId]
+                       AND (kind <> 'project' OR EXISTS (SELECT 1 FROM chat_messages src WHERE src.id = chat_memory.source_message_id AND src.session_id = ?))
+                     FOR UPDATE",
+                    [$replaces, $source['user_id'], $source['model_id'], $messageId, $source['session_id']]
                 )->fetch_assoc();
                 if ($previous === null) {
                     throw new \RuntimeException('Replacement must target an earlier memory in the same scope.');

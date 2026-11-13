@@ -412,6 +412,10 @@ public function save(array $input, ?string $cardData = null): int|false
         FILTER_VALIDATE_BOOLEAN
     );
 
+    $parameters['memory_review'] = filter_var(
+        $input['memory_review'] ?? $previousParameters['memory_review'] ?? true,
+        FILTER_VALIDATE_BOOLEAN
+    );
     $parameters['memory_enabled'] = filter_var(
         $input['memory_enabled'] ?? $previousParameters['memory_enabled'] ?? false,
         FILTER_VALIDATE_BOOLEAN

@@ -420,7 +420,7 @@ private function generateReply(int $chatId, array $model, array $input, array $t
 
       if (filter_var($model['parameters']['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
           try {
-              $memories = (new MemoryRetrieval(new \mara\database\ChatMemory(), $this->RAG))->search(User::id(), $modelId, $message);
+              $memories = (new MemoryRetrieval(new \mara\database\ChatMemory(), $this->RAG))->search(User::id(), $modelId, $message, $chatId);
               if ($memories !== []) {
                   $context = json_encode(array_column($memories, 'content'), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
                   foreach ($messages as &$historyMessage) {

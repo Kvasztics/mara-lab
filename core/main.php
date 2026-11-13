@@ -204,18 +204,6 @@ public function view($var = []): void
     $pagedata['models'] = $mdata['models'];
     $pagedata['image']  = $mdata['image'];
     $pagedata['active_chat_id'] = (int)($_SESSION['chat_id'] ?? 0);
-    try {
-        $review = (new \mara\database\ChatMemory())->reviews(User::id(), (int)$_SESSION['model_id']);
-        if ($review !== []) {
-            $_SESSION['memory_review_csrf'] ??= bin2hex(random_bytes(32));
-            $pagedata['memoryReview'] = $review;
-            $pagedata['memoryReviewToken'] = $_SESSION['memory_review_csrf'];
-        }
-    } catch (\Throwable $error) {
-        error_log('Mara memory review: ' . $error->getMessage());
-    }
-    $pagedata['memoryReviewError'] = $_SESSION['memory_review_error'] ?? false;
-    unset($_SESSION['memory_review_error']);
     $pagedata['chats']  = (!empty($_SESSION['model_id']) ? $this->CHAT->chat_titles((int)$_SESSION['model_id']) : '');
     $this->show([
         'header'   => DIR_TPL.'/header.tpl.php',
@@ -225,6 +213,40 @@ public function view($var = []): void
         'pagedata' => $pagedata
     ]);
   }
+private function memoryReviewEnabled(int $modelId): bool
+  {
+    $model = (new \mara\database\mModels())->getById($modelId);
+    if (!$model || (!User::isAdmin() && !in_array((int)$model['user_id'], [0, User::id()], true))) {
+        return false;
+    }
+    $parameters = json_decode($model['parameters'] ?? '{}', true);
+    return filter_var($parameters['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
+        && filter_var($parameters['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN);
+  }
+
+public function memoryreviewstatus($var = []): void
+  {
+    User::loggedIn();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $modelId = (int)($_SESSION['model_id'] ?? 0);
+    $enabled = $modelId > 0 && $this->memoryReviewEnabled($modelId);
+    $memoryReview = $enabled
+        ? (new \mara\database\ChatMemory())->reviews(User::id(), $modelId)
+        : [];
+    $html = '';
+    if ($memoryReview !== []) {
+        $_SESSION['memory_review_csrf'] ??= bin2hex(random_bytes(32));
+        $memoryReviewToken = $_SESSION['memory_review_csrf'];
+        ob_start();
+        require DIR_TPL . '/memory_review.tpl.php';
+        $html = ob_get_clean();
+    }
+    echo json_encode(['enabled' => $enabled, 'count' => (int)($memoryReview['total'] ?? 0), 'html' => $html],
+        JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+  }
+
 public function memoryreview($var = []): void
   {
     User::loggedIn();
@@ -239,7 +261,7 @@ public function memoryreview($var = []): void
         $userId = User::id();
         $modelId = (int)($_SESSION['model_id'] ?? 0);
         $messageId = filter_var($_POST['message_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if ($messageId === false || $modelId < 1) {
+        if ($messageId === false || $modelId < 1 || !$this->memoryReviewEnabled($modelId)) {
             throw new \RuntimeException('Invalid memory proposal ID.');
         }
         $memory = new \mara\database\ChatMemory();
@@ -264,17 +286,24 @@ public function memoryreview($var = []): void
                 $replaces = $proposal['memory_id'];
             }
             $content = trim($content);
-            [$key, $vector] = (new MemoryRetrieval($memory, $this->RAG))->vector($content);
-            $memory->save($messageId, $content, $replaces, 'context', $key, $vector, [$userId, $modelId]);
+            $kind = $_POST['kind'] ?? 'context';
+            if (!in_array($kind, ['profile', 'project', 'context'], true)) {
+                throw new \RuntimeException('Invalid memory kind.');
+            }
+            [$key, $vector] = $kind === 'profile'
+                ? [null, null]
+                : (new MemoryRetrieval($memory, $this->RAG))->vector($content);
+            $memory->save($messageId, $content, $replaces, $kind, $key, $vector, [$userId, $modelId]);
         } else {
             throw new \RuntimeException('Invalid review action.');
         }
     } catch (\Throwable $error) {
         error_log('Mara memory review: ' . $error->getMessage());
-        $_SESSION['memory_review_error'] = true;
+        http_response_code(409);
+        exit(LANG['MEMORY_REVIEW_ERROR']);
     }
 
-    header('Location: ' . DIR_HOST . '/main/view?memory_review=1', true, 303);
+    http_response_code(204);
     exit;
   }
 
@@ -459,6 +488,7 @@ public function settings($var = []): void
             $pagedata['memoryModels'] = [];
         }
         $pagedata['memoryModel'] = (string) App::get('system.memory_model', '');
+        $pagedata['memorySearch'] = App::get('system.memory_search', 'dense');
         $pagedata['memoryPort'] = (int) App::get('system.memory_port', 8085);
         $pagedata['memoryPrompt'] = trim((string) App::get('system.memory_prompt', ''))
             ?: MemorySettings::defaultPrompt();
@@ -575,11 +605,12 @@ public function settingssave($var = []): void
         }
         $model = $memory['model'] ?? null;
         $prompt = $memory['prompt'] ?? null;
+        $search = $memory['search'] ?? 'dense';
         $port = filter_var($memory['port'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1, 'max_range' => 65535],
         ]);
         $currentModel = (string) App::get('system.memory_model', '');
-        if (!is_string($model) || !is_string($prompt) || strlen($prompt) > 60000 || $port === false ||
+        if (!in_array($search, ['dense', 'splade'], true) || !is_string($model) || !is_string($prompt) || strlen($prompt) > 60000 || $port === false ||
             ($model !== '' && $model !== $currentModel &&
              !in_array($model, (new \mara\core\provider\ProviderManager())->getLlamaCppModelOptions(), true))) {
             http_response_code(400);
@@ -587,6 +618,7 @@ public function settingssave($var = []): void
         }
         try {
             $this->SET->saveSystemMemoryValues([
+                'memory_search' => $search,
                 'memory_model' => $model,
                 'memory_port' => (string) $port,
                 'memory_prompt' => trim($prompt),

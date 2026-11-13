@@ -77,6 +77,13 @@ const voiceData = <?= json_encode(
                 <input type="number" id="memory-port" name="memory_settings[port]" min="1" max="65535" value="<?= $memoryPort ?>">
               </div>
               <div class="settings-field">
+                <label for="memory-search"><?= LANG['MEMORY_SEARCH'] ?></label>
+                <select id="memory-search" name="memory_settings[search]">
+                  <option value="dense" <?= $memorySearch !== 'splade' ? 'selected' : '' ?>><?= LANG['MEMORY_SEARCH_DENSE'] ?></option>
+                  <option value="splade" <?= $memorySearch === 'splade' ? 'selected' : '' ?>><?= LANG['MEMORY_SEARCH_SPLADE'] ?></option>
+                </select>
+              </div>
+              <div class="settings-field">
                 <label for="memory-prompt"><?= LANG['MEMORY_PROMPT'] ?></label>
                 <textarea id="memory-prompt" name="memory_settings[prompt]" rows="16"><?= htmlspecialchars($memoryPrompt) ?></textarea>
               </div>

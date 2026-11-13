@@ -23,11 +23,39 @@ final class MemoryRetrieval
         return [$this->key, json_encode($embedding->embed($content), JSON_THROW_ON_ERROR)];
     }
 
-    public function search(int $userId, int $modelId, string $query): array
+    public function search(int $userId, int $modelId, string $query, int $chatId): array
     {
         $profiles = $this->db->profiles($userId, $modelId);
-        $candidates = $this->db->indexed($userId, $modelId, $this->key);
-        if (trim($query) === '' || $candidates === []) {
+        if (trim($query) === '') {
+            return $profiles;
+        }
+        if (App::get('system.memory_search', 'dense') === 'splade') {
+            try {
+                $rows = $this->db->indexed($userId, $modelId, $this->key, $chatId, true);
+                if ($rows !== []) {
+                    $queryVector = SpladeMemory::encode($query);
+                    $matches = [];
+                    foreach ($rows as $row) {
+                        $vector = json_decode($row['embedding'], true, 512, JSON_THROW_ON_ERROR);
+                        $score = 0.0;
+                        foreach ($queryVector as $id => $weight) {
+                            $score += $weight * ($vector[$id] ?? 0.0);
+                        }
+                        if ($score > 0) {
+                            $row['score'] = $score;
+                            unset($row['embedding']);
+                            $matches[] = $row;
+                        }
+                    }
+                    return array_merge($profiles, $this->bestMatches($matches));
+                }
+            } catch (\Throwable $error) {
+                error_log('Mara SPLADE: ' . $error->getMessage());
+            }
+        }
+
+        $candidates = $this->db->indexed($userId, $modelId, $this->key, $chatId);
+        if ($candidates === []) {
             return $profiles;
         }
 
@@ -50,11 +78,16 @@ final class MemoryRetrieval
                 $matches[] = ['content' => $row['content'], 'score' => $score, 'id' => $row['id']];
             }
         }
+        return array_merge($profiles, $this->bestMatches($matches));
+    }
+
+    private function bestMatches(array $matches): array
+    {
         usort($matches, static fn(array $a, array $b): int =>
             ($b['score'] <=> $a['score']) ?: ($b['id'] <=> $a['id'])
         );
 
-        return array_merge($profiles, array_slice($matches, 0, 3));
+        return array_slice($matches, 0, 3);
     }
 
     public function reindex(): int

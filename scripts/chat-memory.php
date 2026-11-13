@@ -51,6 +51,14 @@ try {
         exit($status);
     }
 
+    if ($command === 'index-splade') {
+        do {
+            $count = \mara\core\SpladeMemory::index(20);
+            printf("SPLADE indexed: %d\n", $count);
+        } while ($count === 20);
+        exit;
+    }
+
     if ($command === 'reindex') {
         $retrieval = new \mara\core\MemoryRetrieval(new ChatMemory(), new \mara\core\Rag());
         printf("Indexed memories: %d\n", $retrieval->reindex());
@@ -59,12 +67,15 @@ try {
 
     if ($command === 'work') {
         workMemoryQueue(new ChatMemory(), $prompt, $port);
+        if (($settings['memory_search'] ?? 'dense') === 'splade') {
+            \mara\core\SpladeMemory::index(3);
+        }
         exit;
     }
 
     $messageId = filter_var($argv[2] ?? '', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if (!$messageId || !in_array($command, ['propose', 'add', 'supersede'], true)) {
-        throw new RuntimeException('Usage: serve | work | reindex | propose MESSAGE_ID | add MESSAGE_ID TEXT [profile|context] | supersede MESSAGE_ID MEMORY_ID TEXT [profile|context]');
+        throw new RuntimeException('Usage: serve | work | reindex | index-splade | propose MESSAGE_ID | add MESSAGE_ID TEXT [profile|project|context] | supersede MESSAGE_ID MEMORY_ID TEXT [profile|project|context]');
     }
 
     $memory = new ChatMemory();
@@ -77,8 +88,8 @@ try {
             throw new RuntimeException('Provide a valid replacement ID and a memory of 1–500 characters.');
         }
         $kind = $argv[$command === 'add' ? 4 : 5] ?? 'context';
-        if (!in_array($kind, ['profile', 'context'], true)) {
-            throw new RuntimeException('Memory kind must be profile or context.');
+        if (!in_array($kind, ['profile', 'project', 'context'], true)) {
+            throw new RuntimeException('Memory kind must be profile, project or context.');
         }
         [$key, $vector] = $kind === 'profile'
             ? [null, null]
@@ -98,14 +109,21 @@ try {
 function memoryProposal(ChatMemory $memory, int $messageId, string $prompt, int $port): array
 {
     $source = $memory->source($messageId);
-    $previous = $memory->active((int) $source['user_id'], (int) $source['model_id']);
+    $previous = $memory->active((int) $source['user_id'], (int) $source['model_id'], (int) $source['session_id']);
     $payload = json_encode([
         'model' => 'mara-memory',
         'temperature' => 0,
         'max_tokens' => 150,
         'chat_template_kwargs' => ['enable_thinking' => false],
         'messages' => [
-            ['role' => 'system', 'content' => $prompt],
+            ['role' => 'system', 'content' => $prompt . <<<'KINDS'
+
+Kimeneti kiegészítés: add és supersede esetén adj meg kind mezőt is.
+profile: beszélgetéseken át érvényes személyes tény vagy tartós preferencia.
+project: az adott beszélgetés munkájához tartozó döntés vagy szabály.
+context: egyéb kereshető emlék. Skip esetén elég az action mező.
+KINDS
+            ],
             ['role' => 'user', 'content' => json_encode([
                 'korábbi emlékek' => $previous,
                 'új üzenet' => $source['content'],
@@ -142,6 +160,8 @@ function memoryProposal(ChatMemory $memory, int $messageId, string $prompt, int 
     $validated = ['action' => $action];
     if ($action !== 'skip') {
         $validated['text'] = trim($text);
+        $kind = $proposal['kind'] ?? 'context';
+        $validated['kind'] = in_array($kind, ['profile', 'project', 'context'], true) ? $kind : 'context';
     }
     if ($action === 'supersede') {
         $validated['memory_id'] = $proposal['memory_id'];
@@ -171,10 +191,26 @@ function workMemoryQueue(ChatMemory $memory, string $prompt, int $port): void
             $id = (int)$job['message_id'];
             try {
                 $proposal = memoryProposal($memory, $id, $prompt, $port)['proposal'];
+                $source = $memory->source($id);
+                $model = (new \mara\database\mModels())->getById((int)$source['model_id']);
+                $parameters = json_decode($model['parameters'] ?? '{}', true);
+                if (!filter_var($parameters['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    continue;
+                }
+                $encoded = json_encode($proposal, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+                if ($proposal['action'] !== 'skip' &&
+                    !filter_var($parameters['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN)) {
+                    $kind = $proposal['kind'];
+                    [$key, $vector] = $kind === 'profile'
+                        ? [null, null]
+                        : (new \mara\core\MemoryRetrieval($memory, new \mara\core\Rag()))->vector($proposal['text']);
+                    $memory->save($id, $proposal['text'], $proposal['memory_id'] ?? null, $kind, $key, $vector, null, $encoded);
+                    continue;
+                }
                 $status = $proposal['action'] === 'skip' ? 'skipped' : 'review';
                 $db->execute_query(
                     'UPDATE chat_memory_jobs SET status = ?, proposal = ?, last_error = NULL WHERE message_id = ?',
-                    [$status, json_encode($proposal, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $id]
+                    [$status, $encoded, $id]
                 );
             } catch (Throwable $error) {
                 $attempts = (int)$job['attempts'] + 1;

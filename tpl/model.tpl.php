@@ -359,6 +359,27 @@
                         </div>
                     </div>
 
+                    <div class="settings-field" id="memory-review-setting" style="display:none">
+                        <label for="model-memory-review"><?= LANG['MODEL_MEMORY_REVIEW'] ?></label>
+                        <div class="model-private-control">
+                            <input type="hidden" name="memory_review" value="0">
+                            <label class="switch">
+                                <input type="checkbox" id="model-memory-review" name="memory_review" value="1"
+                                    <?= filter_var($parameters['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' ?>>
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <script>
+                    (() => {
+                        const memory = document.getElementById('model-memory');
+                        const setting = document.getElementById('memory-review-setting');
+                        const sync = () => { setting.style.display = memory.checked ? '' : 'none'; };
+                        memory.addEventListener('change', sync);
+                        sync();
+                    })();
+                    </script>
+
                     <!-- PRIVATE / OWN MODEL -->
                     <div class="settings-field model-private-field">
                         <label>

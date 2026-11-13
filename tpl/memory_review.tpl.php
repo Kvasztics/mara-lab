@@ -1,19 +1,8 @@
 <?php
 $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-if (!empty($memoryReviewError)): ?>
-    <p role="alert"><?= $escape(LANG['MEMORY_REVIEW_ERROR']) ?></p>
-<?php endif;
-if (empty($memoryReview)) {
-    return;
-}
 $proposal = json_decode($memoryReview['proposal'], true);
 $canReplace = ($proposal['action'] ?? '') === 'supersede' && $memoryReview['previous'] !== null;
 ?>
-<div>
-    <button type="button" class="btn btn-primary" onclick="modalOpen('modal_memory_review')">
-        <?= $escape(LANG['MEMORY_REVIEW_TITLE']) ?> (<?= (int)$memoryReview['total'] ?>)
-    </button>
-</div>
 <div id="modal_memory_review" class="modal common-modal" role="dialog" aria-modal="true" aria-labelledby="memory-review-title">
     <div class="modal-content">
         <button type="button" class="close" aria-label="<?= $escape(LANG['MODAL_CLOSE']) ?>"
@@ -43,6 +32,14 @@ $canReplace = ($proposal['action'] ?? '') === 'supersede' && $memoryReview['prev
                 <?php else: ?>
                     <input type="hidden" name="mode" value="add">
                 <?php endif; ?>
+                <label for="memory-review-kind"><?= $escape(LANG['MEMORY_KIND']) ?></label>
+                <select id="memory-review-kind" name="kind">
+                    <?php foreach (['context', 'profile', 'project'] as $kind): ?>
+                        <option value="<?= $kind ?>" <?= ($proposal['kind'] ?? 'context') === $kind ? 'selected' : '' ?>>
+                            <?= $escape(LANG['MEMORY_KIND_' . strtoupper($kind)]) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
                 <div class="modal-actions">
                     <button class="btn" name="decision" value="dismiss" formnovalidate><?= $escape(LANG['MEMORY_REVIEW_DISMISS']) ?></button>
                     <button class="btn btn-primary" name="decision" value="approve"><?= $escape(LANG['MEMORY_REVIEW_APPROVE']) ?></button>
@@ -51,6 +48,3 @@ $canReplace = ($proposal['action'] ?? '') === 'supersede' && $memoryReview['prev
         </div>
     </div>
 </div>
-<?php if (($_GET['memory_review'] ?? '') === '1'): ?>
-<script>window.addEventListener('DOMContentLoaded', () => modalOpen('modal_memory_review'));</script>
-<?php endif; ?>
