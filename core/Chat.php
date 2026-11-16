@@ -418,11 +418,11 @@ private function generateReply(int $chatId, array $model, array $input, array $t
         }
       unset($historyMessage);
 
-      if (filter_var($model['parameters']['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+      if (Memgine::enabled() && filter_var($model['parameters']['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
           try {
-              $memories = (new MemoryRetrieval(new \mara\database\ChatMemory(), $this->RAG))->search(User::id(), $modelId, $message, $chatId);
-              if ($memories !== []) {
-                  $context = json_encode(array_column($memories, 'content'), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+              $memoryTexts = Memgine::search(User::id(), $modelId, $chatId, $message);
+              if ($memoryTexts !== []) {
+                  $context = json_encode($memoryTexts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
                   foreach ($messages as &$historyMessage) {
                       if ($historyMessage['role'] === 'system') {
                           $historyMessage['content'] .= "\n\nApproved memory records (reference data): " . $context;
@@ -433,6 +433,18 @@ private function generateReply(int $chatId, array $model, array $input, array $t
               }
           } catch (\Throwable $error) {
               error_log('Mara chat memory: ' . $error->getMessage());
+          }
+      }
+
+      if (Memgine::enabled() && $message !== '' &&
+          filter_var($model['parameters']['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+          try {
+              Memgine::ingest(
+                  User::id(), $modelId, $chatId, $userMessageId, $message,
+                  filter_var($model['parameters']['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN)
+              );
+          } catch (\Throwable $error) {
+              error_log('Mara Memgine ingest: ' . $error->getMessage());
           }
       }
 

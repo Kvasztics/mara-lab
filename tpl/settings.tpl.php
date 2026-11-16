@@ -59,9 +59,41 @@ const voiceData = <?= json_encode(
           <section class="settings-panel" id="settings-memory" hidden>
             <input type="hidden" name="memory_csrf" value="<?= htmlspecialchars($memoryToken) ?>">
             <div class="settings-section">
+              <div class="settings-section-title">
+                <h2><?= LANG[$memgineEnabled ? 'MEMGINE_CONFIGURED' : 'MEMGINE_DISABLED'] ?></h2>
+              </div>
+              <div class="settings-field">
+                <label for="memgine-url"><?= LANG['MEMGINE_URL'] ?></label>
+                <input type="url" id="memgine-url" name="memory_settings[url]" value="<?= htmlspecialchars($memgineUrl) ?>" required>
+              </div>
+              <div class="settings-field">
+                <label for="memgine-key"><?= LANG['MEMGINE_KEY'] ?></label>
+                <div>
+                  <input type="password" id="memgine-key" name="memory_settings[key]" autocomplete="new-password" maxlength="512" aria-describedby="memgine-key-help">
+                  <small id="memgine-key-help" class="memory-field-help"><?= LANG['MEMGINE_KEY_HELP'] ?></small>
+                </div>
+              </div>
+              <div class="settings-field">
+                <label for="memgine-clear-key"><?= LANG['MEMGINE_CLEAR_KEY'] ?></label>
+                <div class="model-switch-control">
+                  <label class="switch">
+                    <input type="checkbox" role="switch" id="memgine-clear-key" name="memory_settings[clear_key]" value="1">
+                    <span class="switch-slider" aria-hidden="true"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="settings-field">
+                <label for="memgine-timeout"><?= LANG['MEMGINE_TIMEOUT'] ?></label>
+                <input type="number" id="memgine-timeout" name="memory_settings[timeout]" min="300" max="120000" value="<?= $memgineTimeout ?>" required>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">
+                <h2><?= LANG['MEMGINE_LOCAL_EXTRACTOR'] ?></h2>
+              </div>
               <div class="settings-field">
                 <label for="memory-model"><?= LANG['MEMORY_MODEL'] ?></label>
-                <select id="memory-model" name="memory_settings[model]">
+                <select id="memory-model" aria-describedby="memory-restart-help" name="memory_settings[model]">
                   <option value=""><?= LANG['MEMORY_MODEL_EMPTY'] ?></option>
                   <?php if ($memoryModel !== '' && !in_array($memoryModel, $memoryModels, true)): ?>
                   <option value="<?= htmlspecialchars($memoryModel) ?>" selected><?= htmlspecialchars($memoryModel) ?></option>
@@ -70,22 +102,13 @@ const voiceData = <?= json_encode(
                   <option value="<?= htmlspecialchars($filename) ?>" <?= $filename === $memoryModel ? 'selected' : '' ?>><?= htmlspecialchars($filename) ?></option>
                   <?php endforeach; ?>
                 </select>
-                <small><?= LANG['MEMORY_MODEL_HELP'] ?></small>
               </div>
               <div class="settings-field">
                 <label for="memory-port"><?= LANG['MEMORY_PORT'] ?></label>
-                <input type="number" id="memory-port" name="memory_settings[port]" min="1" max="65535" value="<?= $memoryPort ?>">
-              </div>
-              <div class="settings-field">
-                <label for="memory-search"><?= LANG['MEMORY_SEARCH'] ?></label>
-                <select id="memory-search" name="memory_settings[search]">
-                  <option value="dense" <?= $memorySearch !== 'splade' ? 'selected' : '' ?>><?= LANG['MEMORY_SEARCH_DENSE'] ?></option>
-                  <option value="splade" <?= $memorySearch === 'splade' ? 'selected' : '' ?>><?= LANG['MEMORY_SEARCH_SPLADE'] ?></option>
-                </select>
-              </div>
-              <div class="settings-field">
-                <label for="memory-prompt"><?= LANG['MEMORY_PROMPT'] ?></label>
-                <textarea id="memory-prompt" name="memory_settings[prompt]" rows="16"><?= htmlspecialchars($memoryPrompt) ?></textarea>
+                <div>
+                  <input type="number" id="memory-port" name="memory_settings[port]" min="1" max="65535" value="<?= $memoryPort ?>" aria-describedby="memory-restart-help">
+                  <small id="memory-restart-help" class="memory-field-help"><?= LANG['MEMORY_MODEL_HELP'] ?></small>
+                </div>
               </div>
             </div>
           </section>

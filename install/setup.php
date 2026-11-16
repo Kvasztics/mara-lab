@@ -4,8 +4,23 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 [$script, $root, $database] = $argv;
 if (!preg_match('/^[a-z][a-z0-9_]{0,31}$/', $database)) { throw new RuntimeException('Invalid database name.'); }
 $fields = explode("\0", stream_get_contents(STDIN));
-if (count($fields) !== 9) { throw new RuntimeException('Missing provider configuration.'); }
+if (!in_array(count($fields), [9, 12], true)) { throw new RuntimeException('Missing provider configuration.'); }
 [$name, $email, $password, $providerList, $defaultProvider, $ollamaUrl, $llamaUrl, $llamaBinary, $llamaModels] = $fields;
+[$memgineUrl, $memgineKey, $memgineTimeout] = array_pad(array_slice($fields, 9), 3, '');
+$memgineKey = trim($memgineKey);
+if ($memgineUrl !== '' || $memgineKey !== '') {
+    $parts = parse_url($memgineUrl);
+    if (!filter_var($memgineUrl, FILTER_VALIDATE_URL) ||
+        !in_array($parts['scheme'] ?? '', ['http', 'https'], true) ||
+        isset($parts['user']) || isset($parts['pass']) ||
+        isset($parts['query']) || isset($parts['fragment']) ||
+        $memgineKey === '' || strlen($memgineKey) > 512 || preg_match('/[\r\n]/', $memgineKey) ||
+        filter_var($memgineTimeout, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 300, 'max_range' => 120000],
+        ]) === false) {
+        throw new RuntimeException('Invalid Memgine API configuration.');
+    }
+}
 $providers = explode(',', $providerList);
 if (array_diff($providers, ['ollama','llamacpp']) || count(array_unique($providers)) !== count($providers) || !in_array($defaultProvider, $providers, true)) {
     throw new RuntimeException('Invalid provider selection.');
@@ -58,6 +73,17 @@ if (in_array('llamacpp', $providers, true)) {
 foreach ($settings as [$type,$key,$value]) {
     $stmt->bind_param('sss', $value, $type, $key);
     $stmt->execute();
+}
+if ($memgineKey !== '') {
+    $stmt = $db->prepare("INSERT INTO settings (type, datakey, datavalue) VALUES ('system', ?, ?)");
+    foreach ([
+        'memgine_url' => rtrim($memgineUrl, '/'),
+        'memgine_key' => $memgineKey,
+        'memgine_search_timeout_ms' => $memgineTimeout,
+    ] as $key => $value) {
+        $stmt->bind_param('ss', $key, $value);
+        $stmt->execute();
+    }
 }
 $db->query("CREATE USER '$database'@'localhost' IDENTIFIED BY '$dbPassword'");
 $db->query("GRANT SELECT, INSERT, UPDATE, DELETE ON `$database`.* TO '$database'@'localhost'");

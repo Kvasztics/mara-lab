@@ -220,7 +220,7 @@ private function memoryReviewEnabled(int $modelId): bool
         return false;
     }
     $parameters = json_decode($model['parameters'] ?? '{}', true);
-    return filter_var($parameters['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
+    return Memgine::enabled() && filter_var($parameters['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
         && filter_var($parameters['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN);
   }
 
@@ -231,9 +231,16 @@ public function memoryreviewstatus($var = []): void
     header('Cache-Control: no-store');
     $modelId = (int)($_SESSION['model_id'] ?? 0);
     $enabled = $modelId > 0 && $this->memoryReviewEnabled($modelId);
-    $memoryReview = $enabled
-        ? (new \mara\database\ChatMemory())->reviews(User::id(), $modelId)
-        : [];
+    try {
+        $memoryReview = $enabled
+            ? Memgine::reviews(User::id(), $modelId)
+            : [];
+    } catch (\Throwable $error) {
+        error_log('Mara memory reviews: ' . $error->getMessage());
+        http_response_code(503);
+        echo '{}';
+        exit;
+    }
     $html = '';
     if ($memoryReview !== []) {
         $_SESSION['memory_review_csrf'] ??= bin2hex(random_bytes(32));
@@ -260,43 +267,20 @@ public function memoryreview($var = []): void
     try {
         $userId = User::id();
         $modelId = (int)($_SESSION['model_id'] ?? 0);
-        $messageId = filter_var($_POST['message_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if ($messageId === false || $modelId < 1 || !$this->memoryReviewEnabled($modelId)) {
-            throw new \RuntimeException('Invalid memory proposal ID.');
-        }
-        $memory = new \mara\database\ChatMemory();
+        $jobId = $_POST['job_id'] ?? null;
         $decision = $_POST['decision'] ?? null;
-        if ($decision === 'dismiss') {
-            $memory->dismiss($messageId, $userId, $modelId);
-        } elseif ($decision === 'approve') {
-            $review = $memory->reviews($userId, $modelId, $messageId);
-            $content = $_POST['content'] ?? null;
-            $mode = $_POST['mode'] ?? null;
-            if ($review === [] || !is_string($content) || trim($content) === '' ||
-                mb_strlen(trim($content)) > 500 || !in_array($mode, ['add', 'supersede'], true)) {
-                throw new \RuntimeException('Invalid memory proposal.');
-            }
-            $proposal = json_decode($review['proposal'], true, 512, JSON_THROW_ON_ERROR);
-            $replaces = null;
-            if ($mode === 'supersede') {
-                if (($proposal['action'] ?? '') !== 'supersede' || $review['previous'] === null ||
-                    !is_int($proposal['memory_id'] ?? null)) {
-                    throw new \RuntimeException('Replacement memory is no longer available.');
-                }
-                $replaces = $proposal['memory_id'];
-            }
-            $content = trim($content);
-            $kind = $_POST['kind'] ?? 'context';
-            if (!in_array($kind, ['profile', 'project', 'context'], true)) {
-                throw new \RuntimeException('Invalid memory kind.');
-            }
-            [$key, $vector] = $kind === 'profile'
-                ? [null, null]
-                : (new MemoryRetrieval($memory, $this->RAG))->vector($content);
-            $memory->save($messageId, $content, $replaces, $kind, $key, $vector, [$userId, $modelId]);
-        } else {
-            throw new \RuntimeException('Invalid review action.');
+        if (!Memgine::enabled() || !is_string($jobId) || !preg_match('/\A[a-f0-9]{32}\z/', $jobId) ||
+            !in_array($decision, ['approve', 'dismiss'], true) ||
+            $modelId < 1 || !$this->memoryReviewEnabled($modelId)) {
+            throw new \RuntimeException('Invalid Memgine review.');
         }
+        $fields = ['job_id' => $jobId, 'decision' => $decision];
+        if ($decision === 'approve') {
+            $fields['text'] = $_POST['content'] ?? null;
+            $fields['kind'] = $_POST['kind'] ?? null;
+            $fields['mode'] = $_POST['mode'] ?? 'add';
+        }
+        Memgine::review($userId, $modelId, $fields);
     } catch (\Throwable $error) {
         error_log('Mara memory review: ' . $error->getMessage());
         http_response_code(409);
@@ -488,10 +472,10 @@ public function settings($var = []): void
             $pagedata['memoryModels'] = [];
         }
         $pagedata['memoryModel'] = (string) App::get('system.memory_model', '');
-        $pagedata['memorySearch'] = App::get('system.memory_search', 'dense');
+        $pagedata['memgineEnabled'] = Memgine::enabled();
+        $pagedata['memgineUrl'] = Memgine::url();
+        $pagedata['memgineTimeout'] = Memgine::timeout();
         $pagedata['memoryPort'] = (int) App::get('system.memory_port', 8085);
-        $pagedata['memoryPrompt'] = trim((string) App::get('system.memory_prompt', ''))
-            ?: MemorySettings::defaultPrompt();
     }
     
     $pagedata['voiceproviders'] = array_filter(
@@ -604,25 +588,39 @@ public function settingssave($var = []): void
             exit(LANG['MEMORY_SETTINGS_INVALID']);
         }
         $model = $memory['model'] ?? null;
-        $prompt = $memory['prompt'] ?? null;
-        $search = $memory['search'] ?? 'dense';
+        $url = is_string($memory['url'] ?? null) ? trim($memory['url']) : '';
+        $parts = parse_url($url);
+        $key = $memory['key'] ?? '';
+        $timeout = filter_var($memory['timeout'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 300, 'max_range' => 120000],
+        ]);
         $port = filter_var($memory['port'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1, 'max_range' => 65535],
         ]);
         $currentModel = (string) App::get('system.memory_model', '');
-        if (!in_array($search, ['dense', 'splade'], true) || !is_string($model) || !is_string($prompt) || strlen($prompt) > 60000 || $port === false ||
+        if (!filter_var($url, FILTER_VALIDATE_URL) ||
+            !in_array($parts['scheme'] ?? '', ['http', 'https'], true) ||
+            isset($parts['user']) || isset($parts['query']) || isset($parts['fragment']) ||
+            !is_string($key) || strlen($key) > 512 || preg_match('/[\r\n]/', $key) ||
+            $timeout === false || !is_string($model) || $port === false ||
             ($model !== '' && $model !== $currentModel &&
              !in_array($model, (new \mara\core\provider\ProviderManager())->getLlamaCppModelOptions(), true))) {
             http_response_code(400);
             exit(LANG['MEMORY_SETTINGS_INVALID']);
         }
         try {
-            $this->SET->saveSystemMemoryValues([
-                'memory_search' => $search,
+            $values = [
+                'memgine_url' => rtrim($url, '/'),
+                'memgine_search_timeout_ms' => (string)$timeout,
                 'memory_model' => $model,
                 'memory_port' => (string) $port,
-                'memory_prompt' => trim($prompt),
-            ]);
+            ];
+            if (isset($memory['clear_key'])) {
+                $values['memgine_key'] = '';
+            } elseif (trim($key) !== '') {
+                $values['memgine_key'] = trim($key);
+            }
+            $this->SET->saveSystemMemoryValues($values);
         } catch (\Throwable $error) {
             error_log('Mara memory settings: ' . $error->getMessage());
             http_response_code(500);

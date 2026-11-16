@@ -9,16 +9,21 @@ DB=maralab
 DRY=0
 EXTRAS=0
 CHECK_PROVIDERS=0
+WITH_MEMGINE=0
+MEMGINE_URL=
+MEMGINE_KEY=
+MEMGINE_TIMEOUT=4000
 while (($#)); do
   case "$1" in
     --dry-run) DRY=1; shift ;;
     --check-providers) CHECK_PROVIDERS=1; shift ;;
+    --with-memgine) WITH_MEMGINE=1; shift ;;
     --with-audio-tools) EXTRAS=1; shift ;;
     --dir|--port|--database)
       (($# >= 2)) || { echo 'Missing argument.' >&2; exit 1; }
       case "$1" in --dir) DEST=$2;; --port) PORT=$2;; --database) DB=$2;; esac
       shift 2 ;;
-    --help) echo 'Usage: sudo bash install/install.sh [--dry-run] [--check-providers] [--dir /var/www/mara-lab] [--port 8081] [--database maralab] [--with-audio-tools]'; exit 0 ;;
+    --help) echo 'Usage: sudo bash install/install.sh [--dry-run] [--check-providers] [--dir /var/www/mara-lab] [--port 8081] [--database maralab] [--with-audio-tools] [--with-memgine]'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -46,6 +51,11 @@ PACKAGES=(sudo nginx mariadb-server php-fpm php-cli php-mysql php-curl php-mbstr
 ((EXTRAS == 0)) || PACKAGES+=(ffmpeg espeak-ng)
 echo "System: Debian $VERSION_ID / $ARCH"
 echo "Destination: $DEST | port: $PORT | database: $DB"
+if ((WITH_MEMGINE)); then
+  echo 'Memory: connect to an existing Memgine API.'
+else
+  echo 'Memory: disabled until an API key is configured.'
+fi
 echo "Packages: ${PACKAGES[*]}"
 if ((DRY)); then
   if command -v dpkg-query >/dev/null; then
@@ -81,6 +91,17 @@ read -r -s -p 'Repeat password: ' ADMIN_CONFIRM; echo
 [[ $ADMIN_EMAIL == *@*.* && ${#ADMIN_EMAIL} -le 64 ]] || die 'Invalid email address.'
 [[ ${#ADMIN_PASS} -ge 8 && $ADMIN_PASS == "$ADMIN_CONFIRM" ]] || die 'The password is too short or the passwords do not match.'
 unset ADMIN_CONFIRM
+if ((WITH_MEMGINE)); then
+  read -r -p 'Memgine API base URL [http://127.0.0.1:8079]: ' MEMGINE_URL
+  MEMGINE_URL=${MEMGINE_URL:-http://127.0.0.1:8079}
+  read -r -s -p 'Memgine API key: ' MEMGINE_KEY; echo
+  [[ $MEMGINE_KEY =~ [^[:space:]] && ${#MEMGINE_KEY} -le 512 ]] || die 'Enter a nonempty Memgine API key.'
+  read -r -p 'Memgine search timeout in milliseconds [4000]: ' MEMGINE_TIMEOUT
+  MEMGINE_TIMEOUT=${MEMGINE_TIMEOUT:-4000}
+  [[ $MEMGINE_TIMEOUT =~ ^[0-9]{3,6}$ ]] || die 'Invalid Memgine search timeout.'
+  MEMGINE_TIMEOUT=$((10#$MEMGINE_TIMEOUT))
+  ((MEMGINE_TIMEOUT >= 300 && MEMGINE_TIMEOUT <= 120000)) || die 'Memgine search timeout must be 300–120000 ms.'
+fi
 LOG="/var/log/$SITE-install-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 trap 'echo "Installation stopped at line $LINENO. Log: $LOG. Check any newly created files and database before running the installer again."' ERR
@@ -97,8 +118,12 @@ install_providers
 bash "$SOURCE/install/services.sh" www-data
 install -d -m 0755 "$DEST"
 tar -C "$SOURCE" --exclude=.git --exclude=config/config.php -cf - . | tar -C "$DEST" -xf -
-printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s' "$ADMIN_NAME" "$ADMIN_EMAIL" "$ADMIN_PASS" "$PROVIDERS" "$DEFAULT_PROVIDER" "$OLLAMA_URL" "$LLAMA_URL" "$LLAMA_BINARY" "$LLAMA_MODELS" | php "$DEST/install/setup.php" "$DEST" "$DB"
-unset ADMIN_PASS
+printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s' \
+  "$ADMIN_NAME" "$ADMIN_EMAIL" "$ADMIN_PASS" "$PROVIDERS" "$DEFAULT_PROVIDER" \
+  "$OLLAMA_URL" "$LLAMA_URL" "$LLAMA_BINARY" "$LLAMA_MODELS" \
+  "$MEMGINE_URL" "$MEMGINE_KEY" "$MEMGINE_TIMEOUT" |
+  php "$DEST/install/setup.php" "$DEST" "$DB"
+unset ADMIN_PASS MEMGINE_KEY
 chown -R root:www-data "$DEST"
 find "$DEST" -type d -exec chmod 0755 {} +
 find "$DEST" -type f -exec chmod 0644 {} +

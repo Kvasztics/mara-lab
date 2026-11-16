@@ -13,8 +13,8 @@ return [
                 'negative_prompt' =>
                     'blurry, low quality, distorted, extra limbs, bad anatomy, deformed',
                 'steps' => 20,
-                'width' => 512,
-                'height' => 512,
+                'width' => 1024,
+                'height' => 1024,
                 'cfg_scale' => 7.0,
                 'sampler_name' => 'k_dpmpp_2m',
                 'scheduler' => 'karras',

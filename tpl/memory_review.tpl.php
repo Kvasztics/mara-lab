@@ -11,7 +11,7 @@ $canReplace = ($proposal['action'] ?? '') === 'supersede' && $memoryReview['prev
             <h2 id="memory-review-title"><?= $escape(LANG['MEMORY_REVIEW_TITLE']) ?></h2>
             <form method="post" action="<?= $escape(DIR_HOST . '/main/memoryreview') ?>">
                 <input type="hidden" name="csrf_token" value="<?= $escape($memoryReviewToken) ?>">
-                <input type="hidden" name="message_id" value="<?= (int)$memoryReview['message_id'] ?>">
+                <input type="hidden" name="job_id" value="<?= $escape($memoryReview['job_id']) ?>">
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem">
                     <div>
                         <strong><?= $escape(LANG['MEMORY_REVIEW_SOURCE']) ?></strong>

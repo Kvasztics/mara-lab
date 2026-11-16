@@ -236,18 +236,6 @@ public function saveMessage(
     }
 
     $messageId = (int)$this->db->insert_id;
-    if ($role === 'user' && trim($content) !== '') {
-        try {
-            $this->db->execute_query(
-                'INSERT INTO chat_memory_jobs (message_id)
-                 SELECT ? FROM chat_sessions s JOIN models m ON m.id = s.model_id
-                 WHERE s.id = ? AND ' . ChatMemory::enabledModelCondition(),
-                [$messageId, $chatId]
-            );
-        } catch (\Throwable $error) {
-            error_log('Mara memory enqueue: ' . $error->getMessage());
-        }
-    }
     return $messageId;
   }
 /**

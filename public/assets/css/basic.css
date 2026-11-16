@@ -3973,3 +3973,26 @@ img {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+/* Memory settings */
+.memory-field-help {
+    display: block;
+    margin-top: 6px;
+    color: #737e89;
+    font-size: 12px;
+    font-style: italic;
+    line-height: 1.5;
+}
+
+#settings-memory .switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+}
+
+#settings-memory .switch input:focus-visible + .switch-slider {
+    outline: 2px solid #1677d2;
+    outline-offset: 2px;
+}

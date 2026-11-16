@@ -56,6 +56,12 @@ sudo bash install/install.sh \
 
 This uses a new application directory, database, and web port. System packages and any selected existing model backend are shared with other applications on the machine.
 
+Optional `--with-memgine` connects Mara to an existing Memgine memory API. The installer
+asks for its base URL (default `http://127.0.0.1:8079`), API key and search timeout
+(default 4000 ms). You can also configure these later in Settings → Memory.
+Memory starts disabled when no API key is provided. Enable memory for the
+models that should use it. Install Memgine and its extractor separately.
+
 Optional `--with-audio-tools` installs ffmpeg and eSpeak NG. Other speech services and models need separate setup.
 
 ## MaraImg and image backends
