@@ -439,9 +439,25 @@ private function generateReply(int $chatId, array $model, array $input, array $t
       if (Memgine::enabled() && $message !== '' &&
           filter_var($model['parameters']['memory_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
           try {
+              $recentMemoryMessages = [];
+              foreach (array_reverse($history) as $row) {
+                  if ((int)($row['id'] ?? 0) === $userMessageId ||
+                      !in_array($row['role'] ?? '', ['user', 'assistant'], true) ||
+                      !is_string($row['content'] ?? null)) {
+                      continue;
+                  }
+                  $recentMemoryMessages[] = [
+                      'role' => $row['role'],
+                      'content' => mb_substr($row['content'], 0, 2000),
+                  ];
+                  if (count($recentMemoryMessages) === 2) {
+                      break;
+                  }
+              }
               Memgine::ingest(
                   User::id(), $modelId, $chatId, $userMessageId, $message,
-                  filter_var($model['parameters']['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN)
+                  filter_var($model['parameters']['memory_review'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                  array_reverse($recentMemoryMessages)
               );
           } catch (\Throwable $error) {
               error_log('Mara Memgine ingest: ' . $error->getMessage());

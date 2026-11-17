@@ -43,11 +43,12 @@ final class Memgine
         return $response['memories'];
     }
 
-    public static function ingest(int $user, int $model, int $chat, int $messageId, string $text, bool $reviewRequired): void
+    public static function ingest(int $user, int $model, int $chat, int $messageId, string $text, bool $reviewRequired, array $history = []): void
     {
         self::request('ingest', $user, $model, $chat, [
             'message_id' => (string)$messageId,
             'review_required' => $reviewRequired,
+            'history' => $history,
             'text' => $text,
         ], 202);
     }
