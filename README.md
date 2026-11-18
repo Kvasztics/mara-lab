@@ -30,6 +30,12 @@ Mara Lab currently supports **Ollama** and **llama.cpp**. Use one or both, choos
 
 A Mara model configuration combines a base model with its prompts, character profile, generation settings, and enabled tools. Multiple characters can therefore explore different behavior using the same base model.
 
+### Long-term memory with Memgine
+
+Mara Lab integrates with [Memgine](https://github.com/Kvasztics/Memgine) through its memory API. Memgine extracts memory suggestions, stores approved memories in SQLite, and retrieves relevant context for later conversations. Suggestions can be reviewed and edited from Mara.
+
+Profile and context memories are scoped to the client, user, and model. Project memories additionally belong to a specific conversation. Configure the Memgine API URL and API key in Mara's Memory settings. Memgine runs as a separate service and provides its own extraction model connection, optional SPLADE retrieval, and Dreaming workflow.
+
 ### Character cards and roleplay
 
 Import Tavern **V1, V2 and V3 character cards** as JSON or PNG from the model management page. Imports open in the character editor for review before saving as a new character. Select a local provider and base model; imported cards do not automatically enable tools.
